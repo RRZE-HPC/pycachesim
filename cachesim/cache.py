@@ -6,8 +6,14 @@ from __future__ import print_function
 from __future__ import division
 from __future__ import unicode_literals
 
+import sys
 import math
 from collections import defaultdict
+from functools import reduce
+
+if sys.version_info[0] < 3:
+    range = xrange
+
 
 class MemoryHierarchy(object):
     '''High-level interface to a memory hierarchy.
@@ -39,10 +45,10 @@ class MemoryHierarchy(object):
 
     def load(self, addr, last_addr=None, length=None):
         if last_addr is not None:
-            for a in xrange(addr, last_addr):
+            for a in range(addr, last_addr):
                 self.first_level.load(a)
         elif length is not None:
-            for a in xrange(addr, addr+length):
+            for a in range(addr, addr+length):
                 self.first_level.load(a)
         else:
             self.first_level.load(addr)
@@ -51,7 +57,7 @@ class MemoryHierarchy(object):
         if non_temporal:
             raise ValueError("non_temporal stores are not yet supported")
         else:
-            for a in xrange(addr, addr+length):
+            for a in range(addr, addr+length):
                 self.first_level.store(a)
 
     def stats(self):
@@ -183,7 +189,7 @@ class Cache(object):
     
     @property
     def cached(self):
-        cls_cached = reduce(set.union, self.placement.itervalues(), set())
+        cls_cached = reduce(set.union, self.placement.values(), set())
         addrs_cached = map(lambda cl: set(range(cl*self.clsize, (cl+1)*self.clsize)), cls_cached)
         return reduce(set.union, addrs_cached, set())
 

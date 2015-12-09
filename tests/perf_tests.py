@@ -102,7 +102,7 @@ class TimingTests:
     def run(self):
         print("{:>40} | {:<10}".format("Function", "Time (s)"))
         print("-"*40+" | "+"-"*10)
-        for k,f in sorted(self.__class__.__dict__.iteritems()):
+        for k,f in sorted(self.__class__.__dict__.items()):
             if k.startswith('time_'):
                 ret = f(self)
                 if ret:

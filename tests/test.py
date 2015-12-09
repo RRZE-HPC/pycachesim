@@ -17,9 +17,9 @@ class TestHighlevel(unittest.TestCase):
         mh.load(0, 32)
         mh.load(16,48)
         
-        self.assertItemsEqual(l1.cached, range(40,48))
-        self.assertItemsEqual(l2.cached, range(32,48))
-        self.assertItemsEqual(l3.cached, range(16,48))
+        self.assertEqual(l1.cached, set(range(40,48)))
+        self.assertEqual(l2.cached, set(range(32,48)))
+        self.assertEqual(l3.cached, set(range(16,48)))
 
     def test_fill(self):
         l3 = Cache(4, 8, 8, LRUPolicy())
@@ -30,6 +30,6 @@ class TestHighlevel(unittest.TestCase):
         mh.load(0, 512)
         mh.load(448, 576)
         
-        self.assertItemsEqual(l1.cached, range(512, 576))
-        self.assertItemsEqual(l2.cached, range(448, 576))
-        self.assertItemsEqual(l3.cached, range(320, 576))     
+        self.assertEqual(l1.cached, set(range(512, 576)))
+        self.assertEqual(l2.cached, set(range(448, 576)))
+        self.assertEqual(l3.cached, set(range(320, 576)))     
