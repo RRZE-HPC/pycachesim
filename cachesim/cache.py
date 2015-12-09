@@ -7,10 +7,7 @@ from __future__ import division
 from __future__ import unicode_literals
 
 import math
-import numbers
-from copy import copy, deepcopy
 from collections import defaultdict
-import operator
 
 class MemoryHierarchy(object):
     '''High-level interface to a memory hierarchy.
@@ -28,8 +25,7 @@ class MemoryHierarchy(object):
         
         self.first_level = first_level
         for l in self.levels():  # iterating to last level
-            pass
-        self.main_memory = l
+            self.main_memory = l
         
         self.warmup_mode = False
     
