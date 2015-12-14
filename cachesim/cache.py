@@ -114,9 +114,9 @@ class Cache(object):
         
         self.sets = sets
         self.ways = ways
-        self.way_bits = int(math.sqrt(ways))
+        self.way_bits = int(math.log(ways, 2))
         self.cl_size = cl_size
-        self.cl_bits = int(math.sqrt(cl_size))
+        self.cl_bits = int(math.log(cl_size, 2))
         self.replacement = replacement
         self.parent = parent
         
@@ -160,6 +160,7 @@ class Cache(object):
         set_data = self.placement[set_id]
         
         if cl not in set_data:
+        ##if way_idx is None:
             # Increase MISS counter
             if stats is not None:
                 stats['MISS'] += 1
@@ -281,11 +282,13 @@ def is_power2(num):
 
 
 if __name__ == '__main__':
-    l3 = Cache(64, 8, 64, LRUPolicy())
+    l3 = Cache(20480, 16, 64, LRUPolicy())
     l2 = Cache(512, 8, 64, LRUPolicy(), parent=l3)
-    l1 = Cache(128, 16, 64, LRUPolicy(), parent=l2)
+    l1 = Cache(64, 8, 64, LRUPolicy(), parent=l2)
     mh = CacheSimulator(l1)
     
-    mh.disable_stats()
-    mh.load(0, 50*1024*1024//4) # 50MB of doubles
+    #mh.disable_stats()
+    #mh.load(0, 50*1024*1024//4) # 50MB of doubles
     #mh.load(0, 1024*1024*1024//4) # 1GB
+    mh.load(0, 1024)
+    print(list(mh.stats()))
