@@ -8,15 +8,17 @@ from __future__ import unicode_literals
 
 import sys
 import math
+from copy import deepcopy
 from collections import defaultdict
 from functools import reduce
+import operator
 
 if sys.version_info[0] < 3:
     range = xrange
 
 
-class MemoryHierarchy(object):
-    '''High-level interface to a memory hierarchy.
+class CacheSimulator(object):
+    '''High-level interface to the Cache Simulator.
     
     This is the only class that needs to be directly interfaced to.
     '''
@@ -35,13 +37,21 @@ class MemoryHierarchy(object):
         
         self.warmup_mode = False
     
-    def reset_stats(self):
-        '''Resets statistics in cache levels.
+    def enable_stats(self):
+        '''Resets and enables statistics in all cache levels.
         
         Use this after warming up the caches to get a steady state result.
         '''
         for c in self.levels():
-            c.reset_stats()
+            c.enable_stats()
+            
+    def disable_stats(self):
+        '''Disables statistics in all cache levels.
+        
+        Use this before warming up to increase speed.
+        '''
+        for c in self.levels():
+            c.disable_stats()
 
     def load(self, addr, last_addr=None, length=None):
         if last_addr is not None:
@@ -70,58 +80,70 @@ class MemoryHierarchy(object):
         while p is not None:
             yield p
             p = p.parent
+    
+    def copy(self):
+        '''Returns a copy of this object and all associated cache levels'''
+        return deepcopy(self)
+    
+    def __repr__(self):
+        return 'CacheSimulator({!r})'.format(self.first_level)
 
 
 class Cache(object):
-    def __init__(self, sets, ways, clsize, replacement, parent=None):
+    def __init__(self, sets, ways, cl_size, replacement, parent=None):
         '''Creates one cache level out of given configuration.
     
         :param sets: total number of sets, if 1 cache will be full-associative
         :param ways: total number of ways, if 1 cache will be direct mapped
-        :param clsize: number of bytes that can be addressed individually
+        :param cl_size: number of bytes that can be addressed individually
         :param mapping: mapping from memory addresses to cache locations
         :param parent: the cache where misses are forwarded to, if None it is a last level cache
         
-        The total cache size is the product of sets*ways*clsize.
-        Internally all addresses are converted to cacheline indices, if a clsize > 1 is set.
+        The total cache size is the product of sets*ways*cl_size.
+        Internally all addresses are converted to cacheline indices, if a cl_size > 1 is set.
         '''
         assert parent is None or isinstance(parent, Cache), \
             "parent needs to be None or a Cache object."
         assert isinstance(replacement, ReplacementPolicy), \
             "replacement needs to be a ReplacementPolicy object."
-        assert is_power2(clsize), \
-            "clsize needs to be a power of two."
-        assert parent is None or parent.clsize <= clsize, \
-            "clsize may only increase towards main memory."
-        assert is_power2(sets), "sets needs to be a power of 2"
+        assert is_power2(cl_size), \
+            "cl_size needs to be a power of two."
+        assert parent is None or parent.cl_size <= cl_size, \
+            "cl_size may only increase towards main memory."
         assert is_power2(ways), "ways needs to be a power of 2"
         
         self.sets = sets
         self.ways = ways
-        self.set_bits = int(math.sqrt(sets))
         self.way_bits = int(math.sqrt(ways))
-        self.clsize = clsize
+        self.cl_size = cl_size
+        self.cl_bits = int(math.sqrt(cl_size))
         self.replacement = replacement
         self.parent = parent
         
         self.placement = defaultdict(set)
-        self.reset_stats()
+        self.enable_stats()
     
-    def reset_stats(self):
+    def disable_stats(self):
+        self.stats = None
+    
+    def enable_stats(self):
         self.stats = {
             'LOAD': 0,
             'STORE': 0,
             'HIT': 0,
             'MISS': 0}
 
-    def get_set_id(self, addr):
-        '''Returns the set id associated with the address'''
-        return (addr >> self.way_bits) % self.sets
+    def _get_set_id(self, addr):
+        '''Returns the set id associated with the address
+        
+        This also works for negative (relative) addresses/offsets.'''
+        return (int(addr) >> self.way_bits) & (self.sets-1)
     
-    def addr_to_cl(self, addr):
-        '''Returns a cacheline where the clsize has be applied'''
-        return addr // self.clsize
+    def _addr_to_cl(self, addr):
+        '''Returns a cacheline where the cl_size has be applied'''
+        return addr >> self.cl_bits
 
+    @profile
     def load(self, addr):
         '''Load one element into the cache.
         
@@ -129,15 +151,18 @@ class Cache(object):
         placement locations. It also passes along the request to its parent.
         '''
         # Increase LOAD counter
-        self.stats['LOAD'] += 1
+        stats = self.stats
+        if stats is not None:
+            stats['LOAD'] += 1
         
-        cl = self.addr_to_cl(addr)
-        set_id = self.get_set_id(cl)
+        cl = self._addr_to_cl(addr)
+        set_id = self._get_set_id(cl)
         set_data = self.placement[set_id]
         
         if cl not in set_data:
             # Increase MISS counter
-            self.stats['MISS'] += 1
+            if stats is not None:
+                stats['MISS'] += 1
             
             # Load data from parent (unless parent is main memory):
             if self.parent is not None:
@@ -160,17 +185,22 @@ class Cache(object):
                 set_data.remove(victim)
         else:
             # Increase HIT counter
-            self.stats['HIT'] += 1
+            if stats is not None:
+                stats['HIT'] += 1
             
             # Inform mapping and replacement of the load
             self.replacement.load(cl, set_id)
+        
+        if stats is not None:
+            self.stats = stats
 
     def store(self, addr):
         # Increase STORE counter
-        self.stats['STORE'] += 1
+        if self.stats is not None:
+            self.stats['STORE'] += 1
         
-        cl = self.addr_to_cl(addr)
-        set_id = self.get_set_id(cl)
+        cl = self._addr_to_cl(addr)
+        set_id = self._get_set_id(cl)
         
         # Parent needs to store aswell (unless parent is main memory):
         if self.parent is not None:
@@ -181,17 +211,25 @@ class Cache(object):
         # TODO handle write allocate
     
     def size(self):
-        return self.sets*self.ways*self.clsize
+        return self.sets*self.ways*self.cl_size
     
     def used_size(self):
         '''Returns the number of cached bytes.'''
-        return 
+        return reduce(operator.add, map(len, self.placement.values()))
+    
+    def full(self):
+        '''Returns True if cache is full'''
+        return self.used_size() == self.size()
     
     @property
     def cached(self):
         cls_cached = reduce(set.union, self.placement.values(), set())
-        addrs_cached = map(lambda cl: set(range(cl*self.clsize, (cl+1)*self.clsize)), cls_cached)
+        addrs_cached = map(lambda cl: set(range(cl*self.cl_size, (cl+1)*self.cl_size)), cls_cached)
         return reduce(set.union, addrs_cached, set())
+    
+    def __repr__(self):
+        return 'Cache(sets={!r}, ways={!r}, cl_size={!r}, replacement={!r}, parent={!r})'.format(
+            self.sets, self.ways, self.cl_size, self.replacement, self.parent)
 
 
 class ReplacementPolicy(object):
@@ -233,6 +271,9 @@ class LRUPolicy(ReplacementPolicy):
         victim = self.access_history[set_id].pop(0)
         self.access_history[set_id].append(addr)
         return victim
+    
+    def __repr__(self):
+        return 'LRUPolicy()'
 
 
 def is_power2(num):
@@ -240,15 +281,11 @@ def is_power2(num):
 
 
 if __name__ == '__main__':
-    l3 = Cache(4, 8, 8, LRUPolicy())
-    l2 = Cache(4, 4, 8, LRUPolicy(), parent=l3)
-    l1 = Cache(2, 4, 8, LRUPolicy(), parent=l2)
-    mh = MemoryHierarchy(l1)
+    l3 = Cache(64, 8, 64, LRUPolicy())
+    l2 = Cache(512, 8, 64, LRUPolicy(), parent=l3)
+    l1 = Cache(128, 16, 64, LRUPolicy(), parent=l2)
+    mh = CacheSimulator(l1)
     
-    mh.load(0, 512)
-    mh.load(128,1024)
-    mh.load(1024)
-    
-    for l in mh.levels():
-        print(l.cached)
-        print(l.stats)
+    mh.disable_stats()
+    mh.load(0, 50*1024*1024//4) # 50MB of doubles
+    #mh.load(0, 1024*1024*1024//4) # 1GB

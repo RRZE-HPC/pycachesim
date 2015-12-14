@@ -7,7 +7,7 @@ import sys
 import cProfile
 sys.path[0:0] = ['.', '..']
 
-from cachesim import MemoryHierarchy, Cache, LRUPolicy
+from cachesim import CacheSimulator, Cache, LRUPolicy
 
 
 def do_cprofile(func):
@@ -38,7 +38,7 @@ class TimingTests:
         l3 = Cache(4, 8, 8, LRUPolicy())
         l2 = Cache(4, 4, 8, LRUPolicy(), parent=l3)
         l1 = Cache(2, 4, 8, LRUPolicy(), parent=l2)
-        mh = MemoryHierarchy(l1)
+        mh = CacheSimulator(l1)
         
         with Timer() as t:
             mh.load(0, 1000)
@@ -48,7 +48,7 @@ class TimingTests:
         l3 = Cache(4, 8, 8, LRUPolicy())
         l2 = Cache(4, 4, 8, LRUPolicy(), parent=l3)
         l1 = Cache(2, 4, 8, LRUPolicy(), parent=l2)
-        mh = MemoryHierarchy(l1)
+        mh = CacheSimulator(l1)
         
         with Timer() as t:
             mh.load(0, 10000)
@@ -58,7 +58,7 @@ class TimingTests:
         l3 = Cache(4, 8, 8, LRUPolicy())
         l2 = Cache(4, 4, 8, LRUPolicy(), parent=l3)
         l1 = Cache(2, 4, 8, LRUPolicy(), parent=l2)
-        mh = MemoryHierarchy(l1)
+        mh = CacheSimulator(l1)
         
         with Timer() as t:
             mh.load(0, 100000)
@@ -68,7 +68,7 @@ class TimingTests:
         l3 = Cache(4, 8, 8, LRUPolicy())
         l2 = Cache(4, 4, 8, LRUPolicy(), parent=l3)
         l1 = Cache(2, 4, 8, LRUPolicy(), parent=l2)
-        mh = MemoryHierarchy(l1)
+        mh = CacheSimulator(l1)
         mh.load(0, 100000)
         
         with Timer() as t:
@@ -77,10 +77,10 @@ class TimingTests:
 
     @do_cprofile
     def time_load1000000(self):
-        l3 = Cache(32768, 1024, 8, LRUPolicy())
-        l2 = Cache(32768, 8, 8, LRUPolicy(), parent=l3)
-        l1 = Cache(4096, 8, 8, LRUPolicy(), parent=l2)
-        mh = MemoryHierarchy(l1)
+        l3 = Cache(4096, 1024, 8, LRUPolicy())
+        l2 = Cache(4096, 8, 8, LRUPolicy(), parent=l3)
+        l1 = Cache(512, 8, 8, LRUPolicy(), parent=l2)
+        mh = CacheSimulator(l1)
         
         with Timer() as t:
             mh.load(0, 1000000)
@@ -90,7 +90,7 @@ class TimingTests:
         l3 = Cache(4096, 1024, 8, LRUPolicy())
         l2 = Cache(4096, 8, 8, LRUPolicy(), parent=l3)
         l1 = Cache(512, 8, 8, LRUPolicy(), parent=l2)
-        mh = MemoryHierarchy(l1)
+        mh = CacheSimulator(l1)
         mh.load(0, 1000000)
         
         with Timer() as t:
