@@ -65,7 +65,7 @@ setup(
     packages=find_packages(exclude=['contrib', 'docs', 'tests*']),
 
     ext_modules = [
-        Extension('ccachesim', sources = ['src/cachesim.c']),
+        Extension('cachesim.backend', sources = ['cachesim/backend.c']),
     ],
 
     # List run-time dependencies here.  These will be installed by pip when your

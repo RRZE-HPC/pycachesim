@@ -5,13 +5,13 @@ import sys
 import unittest
 sys.path[0:0] = ['.', '..']
 
-from cachesim import CacheSimulator, Cache, LRUPolicy
+from cachesim import CacheSimulator, Cache
 
 class TestHighlevel(unittest.TestCase):
     def test_fill_nocl(self):
-        l3 = Cache(4, 8, 1, LRUPolicy())
-        l2 = Cache(4, 4, 1, LRUPolicy(), parent=l3)
-        l1 = Cache(2, 4, 1, LRUPolicy(), parent=l2)
+        l3 = Cache(4, 8, 1, "LRU")
+        l2 = Cache(4, 4, 1, "LRU", parent=l3)
+        l1 = Cache(2, 4, 1, "LRU", parent=l2)
         mh = CacheSimulator(l1)
     
         mh.load(0, 32)
@@ -22,9 +22,9 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l3.cached, set(range(16,48)))
 
     def test_fill(self):
-        l3 = Cache(4, 8, 8, LRUPolicy())
-        l2 = Cache(4, 4, 8, LRUPolicy(), parent=l3)
-        l1 = Cache(2, 4, 8, LRUPolicy(), parent=l2)
+        l3 = Cache(4, 8, 8,"LRU")
+        l2 = Cache(4, 4, 8,"LRU", parent=l3)
+        l1 = Cache(2, 4, 8,"LRU", parent=l2)
         mh = CacheSimulator(l1)
     
         mh.load(0, 512)
