@@ -1,9 +1,7 @@
 '''
 Unit tests for cachesim module
 '''
-import sys
 import unittest
-sys.path[0:0] = ['.', '..']
 
 from cachesim import CacheSimulator, Cache
 

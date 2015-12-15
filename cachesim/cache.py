@@ -13,7 +13,7 @@ from collections import defaultdict
 from functools import reduce
 import operator
 
-from . import backend
+from cachesim import backend
 
 if sys.version_info[0] < 3:
     range = xrange
@@ -117,7 +117,7 @@ class Cache(object):
             "cl_size may only increase towards main memory."
         assert is_power2(ways), "ways needs to be a power of 2"
         assert strategy in self.strategy_enum, \
-            "Unsupported strategy, we only support: "+', '.join(strategy_enum)
+            "Unsupported strategy, we only support: "+', '.join(self.strategy_enum)
         
         self.strategy = strategy
         self.strategy_id = self.strategy_enum[strategy]

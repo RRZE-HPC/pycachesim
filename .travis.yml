@@ -3,11 +3,11 @@ python:
     - "2.7"
     - "3.4"
 before_install:
-    - pip install codecov
+  - pip install codecov
 install:
     - pip install .
-script: 
-    - coverage run -p tests/all_tests.py
+script:
+    - coverage run tests/all_tests.py
 after_success:
     - coverage combine
     - codecov

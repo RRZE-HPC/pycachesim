@@ -12,15 +12,7 @@ struct module_state {
 static struct module_state _state;
 #endif
 
-static PyObject *
-error_out(PyObject *m) {
-    struct module_state *st = GETSTATE(m);
-    PyErr_SetString(st->error, "something bad happened");
-    return NULL;
-}
-
 static PyMethodDef cachesim_methods[] = {
-    {"error_out", (PyCFunction)error_out, METH_NOARGS, NULL},
     {NULL, NULL}
 };
 
@@ -43,16 +35,17 @@ typedef struct Cache {
 } Cache;
 
 static void Cache_dealloc(Cache* self) {
-    //Py_XDECREF(self->parent); // Causes a segfault, but why?
-    free(self->placement);
+    Py_XDECREF(self->parent); // Causes a segfault, but why?
+    PyMem_Del(self->placement);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
-unsigned int log2_uint( unsigned int x )
-{
-  unsigned int ans = 0 ;
-  while( x>>=1 ) ans++;
-  return ans ;
+unsigned int log2_uint(unsigned int x) {
+  unsigned int ans = 0;
+  while(x >>= 1) {
+      ans++;
+  }
+  return ans;
 }
 
 static PyMemberDef Cache_members[] = {
@@ -72,7 +65,7 @@ static PyMemberDef Cache_members[] = {
      "replacement strategy of cachlevel"},
     {"parent", T_OBJECT_EX, offsetof(Cache, parent), 0,
      "parent Cache object (cache level which is closer to main memory)"},
-    {"LOAD", T_INT, offsetof(Cache, LOAD), 0,
+    {"LOAD", T_UINT, offsetof(Cache, LOAD), 0,
      "number of loads performed since last counter reset"},
     {"STORE", T_UINT, offsetof(Cache, STORE), 0,
      "number of stores performed since last counter reset"},
@@ -95,6 +88,7 @@ static void Cache__load(Cache* self, unsigned int addr) {
     self->LOAD++;
     unsigned int cl_id = Cache__get_cacheline_id(self, addr);
     unsigned int set_id = Cache__get_set_id(self, cl_id);
+    //PySys_WriteStdout("LOAD=%i addr=%i cl_id=%i set_id=%i\n", self->LOAD, addr, cl_id, set_id);
 
     // Check if cl_id is already cached
     // TODO use sorted data structure for faster searches?
@@ -102,7 +96,7 @@ static void Cache__load(Cache* self, unsigned int addr) {
         if(self->placement[set_id*self->ways+i] == cl_id) {
             // HIT: Found it!
             self->HIT++;
-            
+
             if(self->strategy == 0 || self->strategy == 3) {
                 // FIFO: nothing to do
                 // RR: nothing to do
@@ -120,15 +114,17 @@ static void Cache__load(Cache* self, unsigned int addr) {
             return;
         }
     }
-    
+
     // MISS!
     self->MISS++;
-    
+
     // Load from lower cachelevel
     if(self->parent != NULL) {
+        Py_INCREF(self->parent);
         Cache__load((Cache*)(self->parent), addr);
+        Py_DECREF(self->parent);
     }
-    
+
     // Replace other cacheline according to strategy (using placement order as state)
     if(self->strategy == 0 || self->strategy == 1) {
         // FIFO: add to front of queue
@@ -161,13 +157,13 @@ static PyObject* Cache_load(Cache* self, PyObject *args, PyObject *kwds)
 
 static PyObject* Cache_contains(Cache* self, PyObject *args, PyObject *kwds) {
     unsigned int addr;
-    
+
     static char *kwlist[] = {"addr", NULL};
     PyArg_ParseTupleAndKeywords(args, kwds, "I", kwlist, &addr);
-    
+
     unsigned int cl_id = Cache__get_cacheline_id(self, addr);
     unsigned int set_id = Cache__get_set_id(self, cl_id);
-    
+
     for(int i=0; i<self->ways; i++) {
         if(self->placement[set_id*self->ways+i] == addr) {
             Py_RETURN_TRUE;
@@ -206,7 +202,7 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds);
 
 static PyTypeObject CacheType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "cachesim.backend.Cache",         /* tp_name */
+    "cachesim.backend.Cache",  /* tp_name */
     sizeof(Cache),             /* tp_basicsize */
     0,                         /* tp_itemsize */
     (destructor)Cache_dealloc, /* tp_dealloc */
@@ -247,7 +243,7 @@ static PyTypeObject CacheType = {
 
 static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
     PyObject *parent, *tmp;
-    
+    parent = NULL;
     static char *kwlist[] = {"sets", "ways", "cl_size", "strategy", "parent", NULL};
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "iiii|O!", kwlist,
                                      &self->sets, &self->ways, &self->cl_size, &self->strategy,
@@ -260,15 +256,17 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
         tmp = self->parent;
         Py_INCREF(parent);
         self->parent = parent;
-        //Py_XDECREF(tmp);
+        Py_XDECREF(tmp);
+    } else {
+        self->parent = NULL;
     }
-    
-    self->placement = malloc(sizeof(unsigned int)*self->sets*self->ways);
+
+    self->placement = PyMem_New(unsigned int, self->sets*self->ways);
 
     // TODO check if ways and cl_size are of power^2
     self->way_bits = log2_uint(self->ways);
     self->cl_bits = log2_uint(self->cl_size);
-    
+
     self->LOAD = 0;
     self->STORE = 0;
     self->HIT = 0;
@@ -293,18 +291,14 @@ static struct PyModuleDef moduledef = {
         PyModuleDef_HEAD_INIT,
         "cachesim.backend",
         "Backend of cachesim",
-        sizeof(struct module_state),
-        cachesim_methods,
-        NULL,
-        cachesim_traverse,
-        cachesim_clear,
-        NULL
+        -1,
+        NULL, NULL, NULL, NULL, NULL
 };
 
 #define INITERROR return NULL
 
 PyObject *
-PyInit_cachesim(void)
+PyInit_backend(void)
 #else
 #define INITERROR return
 
@@ -320,18 +314,11 @@ initbackend(void)
 
     if (module == NULL)
         INITERROR;
-    struct module_state *st = GETSTATE(module);
-
-    st->error = PyErr_NewException("cachesim.backend.Error", NULL, NULL);
-    if (st->error == NULL) {
-        Py_DECREF(module);
-        INITERROR;
-    }
     
     CacheType.tp_new = PyType_GenericNew;
     if (PyType_Ready(&CacheType) < 0)
         INITERROR;
-    
+
     Py_INCREF(&CacheType);
     PyModule_AddObject(module, "Cache", (PyObject *)&CacheType);
 
