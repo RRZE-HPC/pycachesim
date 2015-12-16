@@ -16,7 +16,7 @@ setup(
     # Versions should comply with PEP440.  For a discussion on single-sourcing
     # the version across setup.py and the project code, see
     # https://packaging.python.org/en/latest/single_source_version.html
-    version='0.0.3',
+    version='0.1',
 
     description='Python Cache Hierarchy Simulator',
     long_description=long_description,
@@ -65,7 +65,8 @@ setup(
     packages=find_packages(exclude=['contrib', 'docs', 'tests*']),
 
     ext_modules = [
-        Extension('cachesim.backend', sources = ['cachesim/backend.c'], extra_compile_args=['-std=c99']),
+        Extension(
+            'cachesim.backend', sources = ['cachesim/backend.c'], extra_compile_args=['-std=c99']),
     ],
 
     # List run-time dependencies here.  These will be installed by pip when your

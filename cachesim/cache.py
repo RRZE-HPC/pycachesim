@@ -42,39 +42,24 @@ class CacheSimulator(object):
             self.main_memory = l
         
         self.warmup_mode = False
+        self.non_temporal=False  # TODO
     
-    def enable_stats(self):
-        '''Resets and enables statistics in all cache levels.
+    def reset_stats(self):
+        '''Resets statistics in all cache levels.
         
         Use this after warming up the caches to get a steady state result.
         '''
         for c in self.levels():
-            c.enable_stats()
-            
-    def disable_stats(self):
-        '''Disables statistics in all cache levels.
-        
-        Use this before warming up to increase speed.
-        '''
-        for c in self.levels():
-            c.disable_stats()
+            c.reset_stats()
 
     def load(self, addr, last_addr=None, length=None):
-        if last_addr is not None:
-            for a in range(addr, last_addr):
-                self.first_level.load(a)
-        elif length is not None:
-            for a in range(addr, addr+length):
-                self.first_level.load(a)
-        else:
-            self.first_level.load(addr)
+        self.first_level.load(addr, last_addr=last_addr, length=length)
     
-    def store(self, addr, length=1, non_temporal=False):
-        if non_temporal:
+    def store(self, addr, last_addr=None, length=1):
+        if self.non_temporal:
             raise ValueError("non_temporal stores are not yet supported")
         else:
-            for a in range(addr, addr+length):
-                self.first_level.store(a)
+            self.first_level.store(addr, last_addr=last_addr, length=length)
 
     def stats(self):
         '''Collects all stats from all cache levels.'''
@@ -145,14 +130,25 @@ class Cache(object):
                 'HIT': self.backend.HIT,
                 'MISS': self.backend.MISS}
     
-    def load(self, addr):
-        '''Load one element into the cache.
+    def load(self, addr, last_addr=None, length=None):
+        '''Load elements into the cache.
         '''
-        self.backend.load(addr)
+        if last_addr is not None:
+            self.backend.load(addr, length=last_addr-addr)
+        elif length is not None:
+            self.backend.load(addr, length=length)
+        else:
+            self.backend.load(addr)
 
-    def store(self, addr):
-        # TODO (in c and here)
-        pass
+    def store(self, addr, last_addr=None, length=None):
+        '''Stores elements via the cache.
+        '''
+        if last_addr is not None:
+            self.backend.store(addr, length=last_addr-addr)
+        elif length is not None:
+            self.backend.store(addr, length=length)
+        else:
+            self.backend.store(addr)
     
     def size(self):
         return self.sets*self.ways*self.cl_size
@@ -160,16 +156,3 @@ class Cache(object):
     def __repr__(self):
         return 'Cache(sets={!r}, ways={!r}, cl_size={!r}, strategy={!r}, parent={!r})'.format(
             self.sets, self.ways, self.cl_size, self.strategy, self.parent)
-
-
-if __name__ == '__main__':
-    l3 = Cache(20480, 16, 64, LRUPolicy())
-    l2 = Cache(512, 8, 64, LRUPolicy(), parent=l3)
-    l1 = Cache(64, 8, 64, LRUPolicy(), parent=l2)
-    mh = CacheSimulator(l1)
-    
-    #mh.disable_stats()
-    #mh.load(0, 50*1024*1024//4) # 50MB of doubles
-    #mh.load(0, 1024*1024*1024//4) # 1GB
-    mh.load(0, 1024)
-    print(list(mh.stats()))

@@ -7,9 +7,6 @@ struct module_state {
 
 #if PY_MAJOR_VERSION >= 3
 #define GETSTATE(m) ((struct module_state*)PyModule_GetState(m))
-#else
-#define GETSTATE(m) (&_state)
-static struct module_state _state;
 #endif
 
 static PyMethodDef cachesim_methods[] = {
@@ -96,6 +93,10 @@ static void Cache__load(Cache* self, unsigned int addr) {
         if(self->placement[set_id*self->ways+i] == cl_id) {
             // HIT: Found it!
             self->HIT++;
+            // if(self->ways == 16 && set_id == 0 && self->MISS == 0) {
+            //     PySys_WriteStdout("HIT(L3) self->LOAD=%i addr=%i cl_id=%i set_id=%i\n", self->LOAD, addr, cl_id, set_id);
+            //     PySys_WriteStdout("CACHED_B(L3) [%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i]\n", self->placement[set_id+0], self->placement[set_id+1], self->placement[set_id+2], self->placement[set_id+3], self->placement[set_id+4], self->placement[set_id+5], self->placement[set_id+6], self->placement[set_id+7], self->placement[set_id+8], self->placement[set_id+9], self->placement[set_id+10], self->placement[set_id+11], self->placement[set_id+12], self->placement[set_id+13], self->placement[set_id+14], self->placement[set_id+15]);
+            // }
 
             if(self->strategy == 0 || self->strategy == 3) {
                 // FIFO: nothing to do
@@ -146,12 +147,47 @@ static void Cache__load(Cache* self, unsigned int addr) {
     }
 }
 
+static void Cache__store(Cache* self, unsigned int addr) {
+    self->STORE++;
+    // unsigned int cl_id = Cache__get_cacheline_id(self, addr);
+    // unsigned int set_id = Cache__get_set_id(self, cl_id);
+    //PySys_WriteStdout("STORE=%i addr=%i cl_id=%i set_id=%i\n", self->LOAD, addr, cl_id, set_id);
+
+    // Load from lower cachelevel
+    if(self->parent != NULL) {
+        Py_INCREF(self->parent);
+        Cache__store((Cache*)(self->parent), addr);
+        Py_DECREF(self->parent);
+    }
+}
+
 static PyObject* Cache_load(Cache* self, PyObject *args, PyObject *kwds)
 {
     unsigned int addr;
-    PyArg_ParseTuple(args, "I", &addr);
-    // TODO support more complex address (e.g. range(start, stop) and so on)
-    Cache__load(self, addr);
+    unsigned int length = 1;
+    
+    static char *kwlist[] = {"addr", "length", NULL};
+    PyArg_ParseTupleAndKeywords(args, kwds, "I|I", kwlist, &addr, &length);
+    
+    // Doing this in c, tremendously increases the speed for multiple elements
+    for(int i=0; i<length; i++) {
+        Cache__load(self, addr+i);
+    }
+    Py_RETURN_NONE;
+}
+
+static PyObject* Cache_store(Cache* self, PyObject *args, PyObject *kwds)
+{
+    unsigned int addr;
+    unsigned int length = 1;
+    
+    static char *kwlist[] = {"addr", "length", NULL};
+    PyArg_ParseTupleAndKeywords(args, kwds, "I|I", kwlist, &addr, &length);
+    
+    // Doing this in c, tremendously increases the speed for multiple elements
+    for(int i=0; i<length; i++) {
+        Cache__store(self, addr+i);
+    }
     Py_RETURN_NONE;
 }
 
@@ -173,8 +209,11 @@ static PyObject* Cache_contains(Cache* self, PyObject *args, PyObject *kwds) {
 }
 
 static PyMethodDef Cache_methods[] = {
-    {"load", (PyCFunction)Cache_load, METH_VARARGS, NULL},
+    {"load", (PyCFunction)Cache_load, METH_VARARGS|METH_KEYWORDS, NULL},
+    {"store", (PyCFunction)Cache_store, METH_VARARGS|METH_KEYWORDS, NULL},
     {"contains", (PyCFunction)Cache_contains, METH_VARARGS, NULL},
+    
+    /* Sentinel */
     {NULL, NULL}
 };
 
@@ -262,6 +301,9 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
     }
 
     self->placement = PyMem_New(unsigned int, self->sets*self->ways);
+    for(int i=0; i<self->sets*self->ways; i++) {
+        self->placement[i] = UINT_MAX;
+    }
 
     // TODO check if ways and cl_size are of power^2
     self->way_bits = log2_uint(self->ways);
@@ -271,6 +313,8 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
     self->STORE = 0;
     self->HIT = 0;
     self->MISS = 0;
+    
+    // PySys_WriteStdout("CACHE sets=%i ways=%i way_bits=%i cl_size=%i cl_bits=%i\n", self->sets, self->ways, self->way_bits, self->cl_size, self->cl_bits);
     
     return 0;
 }
