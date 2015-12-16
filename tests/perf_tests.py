@@ -7,7 +7,7 @@ import sys
 import cProfile
 sys.path[0:0] = ['.', '..']
 
-from cachesim import CacheSimulator, Cache, LRUPolicy
+from cachesim import CacheSimulator, Cache
 
 
 def do_cprofile(func):
@@ -35,9 +35,9 @@ class Timer:
 
 class TimingTests:
     def time_load1000_tiny(self):
-        l3 = Cache(4, 8, 8, LRUPolicy())
-        l2 = Cache(4, 4, 8, LRUPolicy(), parent=l3)
-        l1 = Cache(2, 4, 8, LRUPolicy(), parent=l2)
+        l3 = Cache(4, 8, 8, "LRU")
+        l2 = Cache(4, 4, 8, "LRU", parent=l3)
+        l1 = Cache(2, 4, 8, "LRU", parent=l2)
         mh = CacheSimulator(l1)
         
         with Timer() as t:
@@ -45,9 +45,9 @@ class TimingTests:
         return t.interval
     
     def time_load10000_tiny(self):
-        l3 = Cache(4, 8, 8, LRUPolicy())
-        l2 = Cache(4, 4, 8, LRUPolicy(), parent=l3)
-        l1 = Cache(2, 4, 8, LRUPolicy(), parent=l2)
+        l3 = Cache(4, 8, 8, "LRU")
+        l2 = Cache(4, 4, 8, "LRU", parent=l3)
+        l1 = Cache(2, 4, 8, "LRU", parent=l2)
         mh = CacheSimulator(l1)
         
         with Timer() as t:
@@ -55,9 +55,9 @@ class TimingTests:
         return t.interval
     
     def time_load100000_tiny(self):
-        l3 = Cache(4, 8, 8, LRUPolicy())
-        l2 = Cache(4, 4, 8, LRUPolicy(), parent=l3)
-        l1 = Cache(2, 4, 8, LRUPolicy(), parent=l2)
+        l3 = Cache(4, 8, 8, "LRU")
+        l2 = Cache(4, 4, 8, "LRU", parent=l3)
+        l1 = Cache(2, 4, 8, "LRU", parent=l2)
         mh = CacheSimulator(l1)
         
         with Timer() as t:
@@ -65,9 +65,9 @@ class TimingTests:
         return t.interval
     
     def time_load100000_tiny_collisions(self):
-        l3 = Cache(4, 8, 8, LRUPolicy())
-        l2 = Cache(4, 4, 8, LRUPolicy(), parent=l3)
-        l1 = Cache(2, 4, 8, LRUPolicy(), parent=l2)
+        l3 = Cache(4, 8, 8, "LRU")
+        l2 = Cache(4, 4, 8, "LRU", parent=l3)
+        l1 = Cache(2, 4, 8, "LRU", parent=l2)
         mh = CacheSimulator(l1)
         mh.load(0, 100000)
         
@@ -77,9 +77,9 @@ class TimingTests:
 
     @do_cprofile
     def time_load1000000(self):
-        l3 = Cache(4096, 1024, 8, LRUPolicy())
-        l2 = Cache(4096, 8, 8, LRUPolicy(), parent=l3)
-        l1 = Cache(512, 8, 8, LRUPolicy(), parent=l2)
+        l3 = Cache(4096, 1024, 8, "LRU")
+        l2 = Cache(4096, 8, 8, "LRU", parent=l3)
+        l1 = Cache(512, 8, 8, "LRU", parent=l2)
         mh = CacheSimulator(l1)
         
         with Timer() as t:
@@ -87,18 +87,16 @@ class TimingTests:
         return t.interval
 
     def time_load1000000_collisions(self):
-        l3 = Cache(4096, 1024, 8, LRUPolicy())
-        l2 = Cache(4096, 8, 8, LRUPolicy(), parent=l3)
-        l1 = Cache(512, 8, 8, LRUPolicy(), parent=l2)
+        l3 = Cache(4096, 1024, 8, "LRU")
+        l2 = Cache(4096, 8, 8, "LRU", parent=l3)
+        l1 = Cache(512, 8, 8, "LRU", parent=l2)
         mh = CacheSimulator(l1)
         mh.load(0, 1000000)
         
         with Timer() as t:
             mh.load(0, 1000000)
         return t.interval
-        
-        
-    
+
     def run(self):
         print("{:>40} | {:<10}".format("Function", "Time (s)"))
         print("-"*40+" | "+"-"*10)
