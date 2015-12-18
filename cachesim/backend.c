@@ -196,7 +196,7 @@ static PyObject* Cache_iterload(Cache* self, PyObject *args, PyObject *kwds)
     while((addr = PyIter_Next(addrs_iter))) {
         // Each address is expanded to a certain length (default is 1)
         for(int i=0; i<length; i++) {
-            Cache__load(self, PyInt_AS_LONG(addr)+i);
+            Cache__load(self, PyInt_AsUnsignedLongLongMask(addr)+i);
         }
         Py_DECREF(addr);
     }
@@ -239,7 +239,7 @@ static PyObject* Cache_iterstore(Cache* self, PyObject *args, PyObject *kwds)
     while((addr = PyIter_Next(addrs_iter))) {
         // Each address is expanded to a certain length (default is 1)
         for(int i=0; i<length; i++) {
-            Cache__store(self, PyInt_AS_LONG(addr)+i);
+            Cache__store(self, PyInt_AsUnsignedLongLongMask(addr)+i);
         }
         Py_DECREF(addr);
     }
