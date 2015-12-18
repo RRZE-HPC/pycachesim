@@ -197,7 +197,7 @@ static PyObject* Cache_iterload(Cache* self, PyObject *args, PyObject *kwds)
         // Each address is expanded to a certain length (default is 1)
         for(int i=0; i<length; i++) {
 #if PY_MAJOR_VERSION >= 3
-            Cache__load(self, PyLong_AsUnsignedLong(addr)+1);
+            Cache__load(self, PyLong_AsUnsignedLong(addr)+i);
 #else
             Cache__load(self, PyInt_AsUnsignedLongLongMask(addr)+i);
 #endif
@@ -244,7 +244,7 @@ static PyObject* Cache_iterstore(Cache* self, PyObject *args, PyObject *kwds)
         // Each address is expanded to a certain length (default is 1)
         for(int i=0; i<length; i++) {
 #if PY_MAJOR_VERSION >= 3
-            Cache__store(self, PyLong_AsUnsignedLong(addr)+1);
+            Cache__store(self, PyLong_AsUnsignedLong(addr)+i);
 #else
             Cache__store(self, PyInt_AsUnsignedLongLongMask(addr)+i);
 #endif
