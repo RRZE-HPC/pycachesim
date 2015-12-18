@@ -9,7 +9,7 @@ from __future__ import unicode_literals
 import sys
 import math
 from copy import deepcopy
-from collections import defaultdict
+from collections import defaultdict, Iterable
 from functools import reduce
 import operator
 
@@ -52,14 +52,25 @@ class CacheSimulator(object):
         for c in self.levels():
             c.reset_stats()
 
-    def load(self, addr, last_addr=None, length=None):
-        self.first_level.load(addr, last_addr=last_addr, length=length)
+    def load(self, addr, last_addr=None, length=1):
+        '''Loads one or more addresses.
+        
+        if last_addr is not None, it all addresses between addr and last_addr (exclusive) are loaded
+        if length is not None, all address from addr until addr+length (exclusive) are loaded
+        '''
+        if not isinstance(addr, Iterable):
+            self.first_level.load(addr, last_addr=last_addr, length=length)
+        else:
+            self.first_level.iterload(addr, length=length)
     
     def store(self, addr, last_addr=None, length=1):
         if self.non_temporal:
             raise ValueError("non_temporal stores are not yet supported")
-        else:
+        
+        if not isinstance(addr, Iterable):
             self.first_level.store(addr, last_addr=last_addr, length=length)
+        else:
+            self.first_level.iterstore(addr, length=length)
 
     def stats(self):
         '''Collects all stats from all cache levels.'''
@@ -130,25 +141,21 @@ class Cache(object):
                 'HIT': self.backend.HIT,
                 'MISS': self.backend.MISS}
     
-    def load(self, addr, last_addr=None, length=None):
+    def load(self, addr, last_addr=None, length=1):
         '''Load elements into the cache.
         '''
         if last_addr is not None:
             self.backend.load(addr, length=last_addr-addr)
-        elif length is not None:
-            self.backend.load(addr, length=length)
         else:
-            self.backend.load(addr)
+            self.backend.load(addr, length=length)
 
-    def store(self, addr, last_addr=None, length=None):
+    def store(self, addr, last_addr=None, length=1):
         '''Stores elements via the cache.
         '''
         if last_addr is not None:
             self.backend.store(addr, length=last_addr-addr)
-        elif length is not None:
-            self.backend.store(addr, length=length)
         else:
-            self.backend.store(addr)
+            self.backend.store(addr, length=length)
     
     def size(self):
         return self.sets*self.ways*self.cl_size

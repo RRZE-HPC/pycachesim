@@ -86,4 +86,41 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l1.STORE, 20*1024*1024)
         self.assertEqual(l2.STORE, 20*1024*1024)
         self.assertEqual(l3.STORE, 20*1024*1024)
+    
+    def test_large_fill_iter(self):
+        # Cache hierarchy as found in a Sandy Brige EP:
+        l3 = Cache(20480, 16, 64, "LRU")  # 20MB 16-ways
+        l2 = Cache(512, 8, 64, "LRU", parent=l3)  # 256kB 8-ways
+        l1 = Cache(64, 8, 64, "LRU", parent=l2)  # 32kB 8-ways
+        mh = CacheSimulator(l1)
         
+        mh.load(range(0, 32*1024))
+        mh.reset_stats()
+        mh.load(range(0, 32*1024))
+        self.assertEqual(l1.LOAD, 32*1024)
+        self.assertEqual(l2.LOAD, 0)
+        self.assertEqual(l3.LOAD, 0)
+        self.assertEqual(l1.HIT, 32*1024)
+        self.assertEqual(l2.HIT, 0)
+        self.assertEqual(l3.HIT, 0)
+        self.assertEqual(l1.MISS, 0)
+        self.assertEqual(l2.MISS, 0)
+        self.assertEqual(l3.MISS, 0)
+        self.assertEqual(l1.STORE, 0)
+        self.assertEqual(l2.STORE, 0)
+        self.assertEqual(l3.STORE, 0)
+        self.assertEqual(l2.LOAD, 0)
+        self.assertEqual(l3.LOAD, 0)
+        
+        mh.reset_stats()
+        mh.load(range(0, 256*1024))
+        self.assertEqual(l1.LOAD, 256*1024)
+        self.assertEqual(l1.HIT, 32*1024+63*(256-32)*1024//64)
+        self.assertEqual(l1.MISS, (256-32)*1024//64)
+        self.assertEqual(l2.LOAD, (256-32)*1024//64)
+        
+        mh.load(0, 20*1024*1024)
+        mh.reset_stats()
+        mh.load(0, 20*1024*1024)
+        self.assertEqual(l1.HIT+l2.HIT+l3.HIT, 20*1024*1024)
+        self.assertEqual(l3.MISS, 0)

@@ -176,6 +176,34 @@ static PyObject* Cache_load(Cache* self, PyObject *args, PyObject *kwds)
     Py_RETURN_NONE;
 }
 
+static PyObject* Cache_iterload(Cache* self, PyObject *args, PyObject *kwds)
+{
+    PyObject *addrs;
+    unsigned int length = 1;
+    
+    static char *kwlist[] = {"addrs", "length", NULL};
+    PyArg_ParseTupleAndKeywords(args, kwds, "O|I", kwlist, &addrs, &length);
+    
+    // Get and check iterator
+    PyObject *addrs_iter = PyObject_GetIter(addrs);
+    if(addrs_iter == NULL) {
+        PyErr_SetString(PyExc_ValueError, "addrs is not iteratable");
+        return NULL;
+    }
+    
+    // Iterate of elements in addrs
+    PyObject *addr;
+    while((addr = PyIter_Next(addrs_iter))) {
+        // Each address is expanded to a certain length (default is 1)
+        for(int i=0; i<length; i++) {
+            Cache__load(self, PyInt_AS_LONG(addr)+i);
+        }
+        Py_DECREF(addr);
+    }
+    Py_DECREF(addrs_iter);
+    Py_RETURN_NONE;
+}
+
 static PyObject* Cache_store(Cache* self, PyObject *args, PyObject *kwds)
 {
     unsigned int addr;
@@ -188,6 +216,34 @@ static PyObject* Cache_store(Cache* self, PyObject *args, PyObject *kwds)
     for(int i=0; i<length; i++) {
         Cache__store(self, addr+i);
     }
+    Py_RETURN_NONE;
+}
+
+static PyObject* Cache_iterstore(Cache* self, PyObject *args, PyObject *kwds)
+{
+    PyObject *addrs;
+    unsigned int length = 1;
+    
+    static char *kwlist[] = {"addrs", "length", NULL};
+    PyArg_ParseTupleAndKeywords(args, kwds, "O|I", kwlist, &addrs, &length);
+    
+    // Get and check iterator
+    PyObject *addrs_iter = PyObject_GetIter(addrs);
+    if(addrs_iter == NULL) {
+        PyErr_SetString(PyExc_ValueError, "addrs is not iteratable");
+        return NULL;
+    }
+    
+    // Iterate of elements in addrs
+    PyObject *addr;
+    while((addr = PyIter_Next(addrs_iter))) {
+        // Each address is expanded to a certain length (default is 1)
+        for(int i=0; i<length; i++) {
+            Cache__store(self, PyInt_AS_LONG(addr)+i);
+        }
+        Py_DECREF(addr);
+    }
+    Py_DECREF(addrs_iter);
     Py_RETURN_NONE;
 }
 
@@ -210,7 +266,9 @@ static PyObject* Cache_contains(Cache* self, PyObject *args, PyObject *kwds) {
 
 static PyMethodDef Cache_methods[] = {
     {"load", (PyCFunction)Cache_load, METH_VARARGS|METH_KEYWORDS, NULL},
+    {"iterload", (PyCFunction)Cache_iterload, METH_VARARGS|METH_KEYWORDS, NULL},
     {"store", (PyCFunction)Cache_store, METH_VARARGS|METH_KEYWORDS, NULL},
+    {"iterstore", (PyCFunction)Cache_iterstore, METH_VARARGS|METH_KEYWORDS, NULL},
     {"contains", (PyCFunction)Cache_contains, METH_VARARGS, NULL},
     
     /* Sentinel */
