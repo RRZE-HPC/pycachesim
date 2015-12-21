@@ -28,11 +28,12 @@ class CacheSimulator(object):
     
     This is the only class that needs to be directly interfaced to.
     '''
-    def __init__(self, first_level):
+    def __init__(self, first_level, write_allocate=True):
         '''
         Creates the interface that we interact with.
         
         :param first_level: first memory level object.
+        :param write_allocate: if True, will load a cacheline before store
         '''
         assert isinstance(first_level, Cache), \
             "first_level needs to be a Cache object."
@@ -42,7 +43,7 @@ class CacheSimulator(object):
             self.main_memory = l
         
         self.warmup_mode = False
-        self.non_temporal=False  # TODO
+        self.write_allocate = write_allocate
     
     def reset_stats(self):
         '''Resets statistics in all cache levels.
@@ -63,9 +64,12 @@ class CacheSimulator(object):
         else:
             self.first_level.iterload(addr, length=length)
     
-    def store(self, addr, last_addr=None, length=1):
-        if self.non_temporal:
+    def store(self, addr, last_addr=None, length=1, non_temporal=False):
+        if non_temporal:
             raise ValueError("non_temporal stores are not yet supported")
+        
+        if self.write_allocate:
+            self.load(addr, last_addr, length)
         
         if not isinstance(addr, Iterable):
             self.first_level.store(addr, last_addr=last_addr, length=length)
