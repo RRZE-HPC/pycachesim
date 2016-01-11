@@ -85,7 +85,9 @@ static void Cache__load(Cache* self, unsigned int addr) {
     self->LOAD++;
     unsigned int cl_id = Cache__get_cacheline_id(self, addr);
     unsigned int set_id = Cache__get_set_id(self, cl_id);
-    //PySys_WriteStdout("LOAD=%i addr=%i cl_id=%i set_id=%i\n", self->LOAD, addr, cl_id, set_id);
+    if(self->ways == 8) { //&& self->LOAD < 200) {
+        // PySys_WriteStdout("LOAD=%i addr=%i cl_id=%i set_id=%i\n", self->LOAD, addr, cl_id, set_id);
+    }
 
     // Check if cl_id is already cached
     // TODO use sorted data structure for faster searches?
@@ -95,7 +97,7 @@ static void Cache__load(Cache* self, unsigned int addr) {
             self->HIT++;
             // if(self->ways == 16 && set_id == 0 && self->MISS == 0) {
             //     PySys_WriteStdout("HIT(L3) self->LOAD=%i addr=%i cl_id=%i set_id=%i\n", self->LOAD, addr, cl_id, set_id);
-            //     PySys_WriteStdout("CACHED_B(L3) [%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i]\n", self->placement[set_id+0], self->placement[set_id+1], self->placement[set_id+2], self->placement[set_id+3], self->placement[set_id+4], self->placement[set_id+5], self->placement[set_id+6], self->placement[set_id+7], self->placement[set_id+8], self->placement[set_id+9], self->placement[set_id+10], self->placement[set_id+11], self->placement[set_id+12], self->placement[set_id+13], self->placement[set_id+14], self->placement[set_id+15]);
+            //     PySys_WriteStdout("CACHED_B(L3) [%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i]\n", self->placement[set_id*self->ways+0], self->placement[set_id*self->ways+1], self->placement[set_id*self->ways+2], self->placement[set_id*self->ways+3], self->placement[set_id*self->ways+4], self->placement[set_id*self->ways+5], self->placement[set_id*self->ways+6], self->placement[set_id*self->ways+7], self->placement[set_id*self->ways+8], self->placement[set_id*self->ways+9], self->placement[set_id*self->ways+10], self->placement[set_id*self->ways+11], self->placement[set_id*self->ways+12], self->placement[set_id*self->ways+13], self->placement[set_id*self->ways+14], self->placement[set_id*self->ways+15]);
             // }
 
             if(self->strategy == 0 || self->strategy == 3) {
@@ -118,6 +120,10 @@ static void Cache__load(Cache* self, unsigned int addr) {
 
     // MISS!
     self->MISS++;
+    if(self->ways == 8) {//self->LOAD < 200) {
+        // PySys_WriteStdout("CACHED [%i %i %i %i %i %i %i %i]\n", self->placement[set_id*self->ways+0], self->placement[set_id*self->ways+1], self->placement[set_id*self->ways+2], self->placement[set_id*self->ways+3], self->placement[set_id*self->ways+4], self->placement[set_id*self->ways+5], self->placement[set_id*self->ways+6], self->placement[set_id*self->ways+7]);
+        // PySys_WriteStdout("MISS self->LOAD=%i addr=%i cl_id=%i set_id=%i\n", self->LOAD, addr, cl_id, set_id);
+    }
 
     // Load from lower cachelevel
     if(self->parent != NULL) {
@@ -130,6 +136,9 @@ static void Cache__load(Cache* self, unsigned int addr) {
     if(self->strategy == 0 || self->strategy == 1) {
         // FIFO: add to front of queue
         // LRU: add to front of queue
+        if(self->ways == 8) { // && self->LOAD < 200) {
+            // PySys_WriteStdout("REPLACED %i with %i\n", self->placement[set_id*self->ways+self->ways-1], cl_id);
+        }
         for(int i=self->ways-1; i>0; i--) {
             self->placement[set_id*self->ways+i] = self->placement[set_id*self->ways+i-1];
         }
@@ -265,7 +274,7 @@ static PyObject* Cache_contains(Cache* self, PyObject *args, PyObject *kwds) {
     unsigned int set_id = Cache__get_set_id(self, cl_id);
 
     for(int i=0; i<self->ways; i++) {
-        if(self->placement[set_id*self->ways+i] == addr) {
+        if(self->placement[set_id*self->ways+i] == cl_id) {
             Py_RETURN_TRUE;
         }
     }
@@ -288,6 +297,7 @@ static PyObject* Cache_cached_get(Cache* self) {
     for(int i=0; i<self->sets*self->ways; i++) {
         // For each cached cacheline expand to all cached addresses:
         for(int j=0; j<self->cl_size; j++) {
+            // PySys_WriteStdout("%i %i %i %i\n", self->sets, self->ways, i, self->placement[i]);
             PyObject* addr = PyLong_FromUnsignedLong(self->placement[i]*self->cl_size+j);
             PySet_Add(cached_set, addr);
             Py_DECREF(addr);
@@ -350,7 +360,7 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
     PyObject *parent, *tmp;
     parent = NULL;
     static char *kwlist[] = {"sets", "ways", "cl_size", "strategy", "parent", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "iiii|O!", kwlist,
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "IIII|O!", kwlist,
                                      &self->sets, &self->ways, &self->cl_size, &self->strategy,
                                      &CacheType, &parent)) {
         return -1;
@@ -367,8 +377,8 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
     }
 
     self->placement = PyMem_New(unsigned int, self->sets*self->ways);
-    for(int i=0; i<self->sets*self->ways; i++) {
-        self->placement[i] = UINT_MAX;
+    for(unsigned int i=0; i<self->sets*self->ways; i++) {
+        self->placement[i] = 0;
     }
 
     // TODO check if ways and cl_size are of power^2
@@ -380,7 +390,7 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
     self->HIT = 0;
     self->MISS = 0;
     
-    // PySys_WriteStdout("CACHE sets=%i ways=%i way_bits=%i cl_size=%i cl_bits=%i\n", self->sets, self->ways, self->way_bits, self->cl_size, self->cl_bits);
+    //PySys_WriteStdout("CACHE sets=%i ways=%i way_bits=%i cl_size=%i cl_bits=%i\n", self->sets, self->ways, self->way_bits, self->cl_size, self->cl_bits);
     
     return 0;
 }

@@ -129,6 +129,14 @@ class Cache(object):
         else:
             self.backend = backend.Cache(sets, ways, cl_size, self.strategy_id)
     
+    def get_cl_start(self, addr):
+        '''Returns first address belonging to the same cacheline as *addr*'''
+        return addr >> self.backend.cl_bits << self.backend.cl_bits
+    
+    def get_cl_end(self, addr):
+        '''Returns last address belonging to the same cacheline as *addr*'''
+        return self.get_cl_start(addr) + self.backend.cl_size - 1
+    
     def reset_stats(self):
         self.backend.HIT = 0
         self.backend.MISS = 0
