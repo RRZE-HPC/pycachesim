@@ -18,7 +18,6 @@ typedef struct Cache {
     unsigned int sets;
     unsigned int set_bits;
     unsigned int ways;
-    unsigned int way_bits;
     unsigned int cl_size;
     unsigned int cl_bits;
     unsigned int strategy; // 0 = FIFO, 1 = LRU, 2 = MRU, 3 = RR (state is kept in the ordering)
@@ -50,8 +49,6 @@ static PyMemberDef Cache_members[] = {
      "number of sets available"},
     {"ways", T_UINT, offsetof(Cache, ways), 0,
      "number of ways available"},
-    {"way_bits", T_UINT, offsetof(Cache, way_bits), 0,
-     "number of bits used to identiy ways"},
     {"cl_size", T_UINT, offsetof(Cache, cl_size), 0,
      "number of bytes in a cacheline"},
     {"cl_bits", T_UINT, offsetof(Cache, cl_bits), 0,
@@ -78,16 +75,16 @@ inline static unsigned int Cache__get_cacheline_id(Cache* self, unsigned int add
 }
 
 inline static unsigned int Cache__get_set_id(Cache* self, unsigned int cl_id) {
-    return (cl_id >> self->way_bits) % self->sets;
+    return cl_id % self->sets;
 }
 
 static void Cache__load(Cache* self, unsigned int addr) {
     self->LOAD++;
     unsigned int cl_id = Cache__get_cacheline_id(self, addr);
     unsigned int set_id = Cache__get_set_id(self, cl_id);
-    if(self->ways == 8) { //&& self->LOAD < 200) {
+    //if(self->ways == 8) { //&& self->LOAD < 200) {
         // PySys_WriteStdout("LOAD=%i addr=%i cl_id=%i set_id=%i\n", self->LOAD, addr, cl_id, set_id);
-    }
+        //}
 
     // Check if cl_id is already cached
     // TODO use sorted data structure for faster searches?
@@ -120,10 +117,14 @@ static void Cache__load(Cache* self, unsigned int addr) {
 
     // MISS!
     self->MISS++;
-    if(self->ways == 8) {//self->LOAD < 200) {
-        // PySys_WriteStdout("CACHED [%i %i %i %i %i %i %i %i]\n", self->placement[set_id*self->ways+0], self->placement[set_id*self->ways+1], self->placement[set_id*self->ways+2], self->placement[set_id*self->ways+3], self->placement[set_id*self->ways+4], self->placement[set_id*self->ways+5], self->placement[set_id*self->ways+6], self->placement[set_id*self->ways+7]);
-        // PySys_WriteStdout("MISS self->LOAD=%i addr=%i cl_id=%i set_id=%i\n", self->LOAD, addr, cl_id, set_id);
-    }
+    // if(self->ways == 8 && self->sets == 64) {//self->LOAD < 200) {
+    //     PySys_WriteStdout("CACHED [%i", self->placement[set_id*self->ways]);
+    //     for(int i=1; i<self->ways; i++) {
+    //         PySys_WriteStdout(", %i", self->placement[set_id*self->ways+i]);
+    //     }
+    //     PySys_WriteStdout("]\n");
+    //     PySys_WriteStdout("MISS self->LOAD=%i addr=%i cl_id=%i set_id=%i\n", self->LOAD, addr, cl_id, set_id);
+    // }
 
     // Load from lower cachelevel
     if(self->parent != NULL) {
@@ -136,8 +137,8 @@ static void Cache__load(Cache* self, unsigned int addr) {
     if(self->strategy == 0 || self->strategy == 1) {
         // FIFO: add to front of queue
         // LRU: add to front of queue
-        if(self->ways == 8) { // && self->LOAD < 200) {
-            // PySys_WriteStdout("REPLACED %i with %i\n", self->placement[set_id*self->ways+self->ways-1], cl_id);
+        if(self->ways == 8 && self->sets == 64) { // && self->LOAD < 200) {
+            // PySys_WriteStdout("%i REPLACED %i with %i\n", addr, self->placement[set_id*self->ways+self->ways-1], cl_id);
         }
         for(int i=self->ways-1; i>0; i--) {
             self->placement[set_id*self->ways+i] = self->placement[set_id*self->ways+i-1];
@@ -154,6 +155,13 @@ static void Cache__load(Cache* self, unsigned int addr) {
         int i = rand() & (self->ways - 1);
         self->placement[set_id*self->ways+i] = cl_id;
     }
+    // if(self->ways == 8 && self->sets == 64) {//self->LOAD < 200) {
+    //     PySys_WriteStdout("CACHED [%i", self->placement[set_id*self->ways]);
+    //     for(int i=1; i<self->ways; i++) {
+    //         PySys_WriteStdout(", %i", self->placement[set_id*self->ways+i]);
+    //     }
+    //     PySys_WriteStdout("]\n");
+    // }
 }
 
 static void Cache__store(Cache* self, unsigned int addr) {
@@ -382,7 +390,7 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
     }
 
     // TODO check if ways and cl_size are of power^2
-    self->way_bits = log2_uint(self->ways);
+    self->set_bits = log2_uint(self->sets);
     self->cl_bits = log2_uint(self->cl_size);
 
     self->LOAD = 0;
@@ -390,7 +398,7 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
     self->HIT = 0;
     self->MISS = 0;
     
-    //PySys_WriteStdout("CACHE sets=%i ways=%i way_bits=%i cl_size=%i cl_bits=%i\n", self->sets, self->ways, self->way_bits, self->cl_size, self->cl_bits);
+    //PySys_WriteStdout("CACHE sets=%i set_bits=%i ways=%i cl_size=%i cl_bits=%i\n", self->sets, self->set_bits, self->ways, self->cl_size, self->cl_bits);
     
     return 0;
 }

@@ -19,6 +19,7 @@ Current features:
 Planned features:
  * Rules to define the interaction between cache levels (e.g., exclusive caches, copy-back,...)
  * Report timeline of cache events
+ * Visualize events (html file?)
  * More detailed store/evict handling (e.g., using dirty bits)
  * (uncertain) instruction cache
  

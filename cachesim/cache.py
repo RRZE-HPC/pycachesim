@@ -13,6 +13,8 @@ from collections import defaultdict, Iterable
 from functools import reduce
 import operator
 
+# from PIL import Image
+
 from cachesim import backend
 
 if sys.version_info[0] < 3:
@@ -87,6 +89,28 @@ class CacheSimulator(object):
             yield p
             p = p.parent
     
+    # def draw_array(self, start, width, height, block=1):
+    #     length = (width*height)//block
+    #     canvas = Image.new("RGB", (width, height)) # FIXME: switch to palette "P" with ImagePalette
+    #
+    #     for h in range(height):
+    #         for w in range(width):
+    #             addr = start+h*(width*block)+w*block
+    #
+    #             l1 = self.first_level
+    #             l2 = self.first_level.parent
+    #             l3 = self.first_level.parent.parent
+    #             if l1.contains(addr):
+    #                 canvas.putpixel((w,h), (0,0,255))
+    #             elif l2.contains(addr):
+    #                 canvas.putpixel((w,h), (255,0,0))
+    #             elif l3.contains(addr):
+    #                 canvas.putpixel((w,h), (0,255,0))
+    #             else:
+    #                 canvas.putpixel((w,h), (255,255,255))
+    #
+    #     return canvas
+
     def __repr__(self):
         return 'CacheSimulator({!r})'.format(self.first_level)
 
