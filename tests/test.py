@@ -72,21 +72,21 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l1.HIT+l2.HIT+l3.HIT, 20*1024*1024)
         self.assertEqual(l3.MISS, 0)
 
-    def test_large_store(self):
-        # Cache hierarchy as found in a Sandy Brige EP:
-        l3 = Cache(20480, 16, 64, "LRU")  # 20MB 16-ways
-        l2 = Cache(512, 8, 64, "LRU", parent=l3)  # 256kB 8-ways
-        l1 = Cache(64, 8, 64, "LRU", parent=l2)  # 32kB 8-ways
-        mh = CacheSimulator(l1, write_allocate=False)
-        mh.store(0, 20*1024*1024)
-        
-        self.assertEqual(l1.LOAD, 0)
-        self.assertEqual(l2.LOAD, 0)
-        self.assertEqual(l3.LOAD, 0)
-        self.assertEqual(l1.STORE, 20*1024*1024)
-        self.assertEqual(l2.STORE, 20*1024*1024)
-        self.assertEqual(l3.STORE, 20*1024*1024)
-    
+    # def test_large_store(self):
+    #     # Cache hierarchy as found in a Sandy Brige EP:
+    #     l3 = Cache(20480, 16, 64, "LRU")  # 20MB 16-ways
+    #     l2 = Cache(512, 8, 64, "LRU", parent=l3)  # 256kB 8-ways
+    #     l1 = Cache(64, 8, 64, "LRU", parent=l2)  # 32kB 8-ways
+    #     mh = CacheSimulator(l1, write_allocate=False)
+    #     mh.store(0, 20*1024*1024)
+    #
+    #     self.assertEqual(l1.LOAD, 0)
+    #     self.assertEqual(l2.LOAD, 0)
+    #     self.assertEqual(l3.LOAD, 0)
+    #     self.assertEqual(l1.STORE, 20*1024*1024)
+    #     self.assertEqual(l2.STORE, 20*1024*1024)
+    #     self.assertEqual(l3.STORE, 20*1024*1024)
+
     def test_large_store_write_allocate(self):
         # Cache hierarchy as found in a Sandy Brige EP:
         l3 = Cache(20480, 16, 64, "LRU")  # 20MB 16-ways

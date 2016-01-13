@@ -12,12 +12,13 @@ Current features:
  * Inclusive cache hierarchies
  * LRU, MRU, RR and FIFO policies supported
  * Support for cache associativity
- * Optional write-allocate support
+ * Only write-allocate with write-back support
  * Speed (core is implemented in C)
  * Python 2.7+ and 3.4+ support, with no other dependencies
 
 Planned features:
  * Rules to define the interaction between cache levels (e.g., exclusive caches, copy-back,...)
+ * Support write-through architectures
  * Report timeline of cache events
  * Visualize events (html file?)
  * More detailed store/evict handling (e.g., using dirty bits)

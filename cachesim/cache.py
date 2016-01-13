@@ -39,6 +39,7 @@ class CacheSimulator(object):
         '''
         assert isinstance(first_level, Cache), \
             "first_level needs to be a Cache object."
+        assert write_allocate, "Non write-allocate architectures are currently not supported."
         
         self.first_level = first_level
         for l in self.levels():  # iterating to last level
@@ -116,15 +117,15 @@ class CacheSimulator(object):
 
 
 class Cache(object):
-    strategy_enum = {"FIFO": 0, "LRU": 1, "MRU": 2, "RR": 3}
+    replacement_policy_enum = {"FIFO": 0, "LRU": 1, "MRU": 2, "RR": 3}
     
-    def __init__(self, sets, ways, cl_size, strategy="LRU", parent=None, level=None):
+    def __init__(self, sets, ways, cl_size, replacement_policy="LRU", parent=None, level=None):
         '''Creates one cache level out of given configuration.
     
         :param sets: total number of sets, if 1 cache will be full-associative
         :param ways: total number of ways, if 1 cache will be direct mapped
         :param cl_size: number of bytes that can be addressed individually
-        :param strategy: replacement strategy: FIFO, LRU (default), MRU or RR
+        :param replacement_policy: FIFO, LRU (default), MRU or RR
         :param parent: the cache where misses are forwarded to, if None it is a last level cache
         
         The total cache size is the product of sets*ways*cl_size.
@@ -140,18 +141,19 @@ class Cache(object):
         assert parent is None or parent.cl_size <= cl_size, \
             "cl_size may only increase towards main memory."
         assert is_power2(ways), "ways needs to be a power of 2"
-        assert strategy in self.strategy_enum, \
-            "Unsupported strategy, we only support: "+', '.join(self.strategy_enum)
+        assert replacement_policy in self.replacement_policy_enum, \
+            "Unsupported replacement strategy, we only support: "+ \
+            ', '.join(self.replacement_policy_enum)
         
-        self.strategy = strategy
-        self.strategy_id = self.strategy_enum[strategy]
+        self.replacement_policy = replacement_policy
+        self.replacement_policy_id = self.replacement_policy_enum[replacement_policy]
         self.parent = parent
         
         if parent is not None:
             self.backend = backend.Cache(
-                sets, ways, cl_size, self.strategy_id, parent.backend)
+                sets, ways, cl_size, self.replacement_policy_id, parent.backend)
         else:
-            self.backend = backend.Cache(sets, ways, cl_size, self.strategy_id)
+            self.backend = backend.Cache(sets, ways, cl_size, self.replacement_policy_id)
     
     def get_cl_start(self, addr):
         '''Returns first address belonging to the same cacheline as *addr*'''
@@ -197,5 +199,5 @@ class Cache(object):
         return self.sets*self.ways*self.cl_size
     
     def __repr__(self):
-        return 'Cache(sets={!r}, ways={!r}, cl_size={!r}, strategy={!r}, parent={!r})'.format(
-            self.sets, self.ways, self.cl_size, self.strategy, self.parent)
+        return 'Cache(sets={!r}, ways={!r}, cl_size={!r}, replacement_policy={!r}, parent={!r})'.format(
+            self.sets, self.ways, self.cl_size, self.replacement_policy, self.parent)
