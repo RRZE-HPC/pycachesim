@@ -9,9 +9,11 @@ struct module_state {
 #define GETSTATE(m) ((struct module_state*)PyModule_GetState(m))
 #endif
 
+#if PY_MAJOR_VERSION < 3
 static PyMethodDef cachesim_methods[] = {
     {NULL, NULL}
 };
+#endif
 
 typedef struct cache_entry {
     unsigned int cl_id;
@@ -220,16 +222,16 @@ static PyObject* Cache_iterload(Cache* self, PyObject *args, PyObject *kwds)
         PyErr_SetString(PyExc_ValueError, "addrs is not iteratable");
         return NULL;
     }
-    
+
     // Iterate of elements in addrs
     PyObject *addr;
     while((addr = PyIter_Next(addrs_iter))) {
         // Each address is expanded to a certain length (default is 1)
         for(int i=0; i<length; i++) {
 #if PY_MAJOR_VERSION >= 3
-            Cache__load(self, PyLong_AsUnsignedLong(addr)+i);
+            Cache__load(self, PyLong_AsUnsignedLongMask(addr)+i);
 #else
-            Cache__load(self, PyInt_AsUnsignedLongLongMask(addr)+i);
+            Cache__load(self, PyInt_AsUnsignedLongMask(addr)+i);
 #endif
         }
         Py_DECREF(addr);
@@ -274,9 +276,9 @@ static PyObject* Cache_iterstore(Cache* self, PyObject *args, PyObject *kwds)
         // Each address is expanded to a certain length (default is 1)
         for(int i=0; i<length; i++) {
 #if PY_MAJOR_VERSION >= 3
-            Cache__store(self, PyLong_AsUnsignedLong(addr)+i);
+            Cache__store(self, PyLong_AsUnsignedLongMask(addr)+i);
 #else
-            Cache__store(self, PyInt_AsUnsignedLongLongMask(addr)+i);
+            Cache__store(self, PyLong_AsUnsignedLongMask(addr)+i);
 #endif
         }
         Py_DECREF(addr);
@@ -398,7 +400,7 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
         self->parent = NULL;
     }
 
-    self->placement = PyMem_New(cache_entry, self->sets*self->ways);
+    self->placement = PyMem_New(struct cache_entry, self->sets*self->ways);
     for(unsigned int i=0; i<self->sets*self->ways; i++) {
         self->placement[i].cl_id = 0;
         self->placement[i].dirty = 0;
@@ -420,16 +422,6 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
 
 
 #if PY_MAJOR_VERSION >= 3
-static int cachesim_traverse(PyObject *m, visitproc visit, void *arg) {
-    Py_VISIT(GETSTATE(m)->error);
-    return 0;
-}
-
-static int cachesim_clear(PyObject *m) {
-    Py_CLEAR(GETSTATE(m)->error);
-    return 0;
-}
-
 static struct PyModuleDef moduledef = {
         PyModuleDef_HEAD_INIT,
         "cachesim.backend",
