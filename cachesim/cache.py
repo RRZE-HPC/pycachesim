@@ -62,7 +62,9 @@ class CacheSimulator(object):
         if last_addr is not None, it all addresses between addr and last_addr (exclusive) are loaded
         if length is not None, all address from addr until addr+length (exclusive) are loaded
         '''
-        if not isinstance(addr, Iterable):
+        if addr is None:
+            return
+        elif not isinstance(addr, Iterable):
             self.first_level.load(addr, last_addr=last_addr, length=length)
         else:
             self.first_level.iterload(addr, length=length)
@@ -74,7 +76,9 @@ class CacheSimulator(object):
         if self.write_allocate:
             self.load(addr, last_addr, length)
         
-        if not isinstance(addr, Iterable):
+        if addr is None:
+            return
+        elif not isinstance(addr, Iterable):
             self.first_level.store(addr, last_addr=last_addr, length=length)
         else:
             self.first_level.iterstore(addr, length=length)
