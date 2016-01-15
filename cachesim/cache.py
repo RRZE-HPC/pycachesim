@@ -92,7 +92,7 @@ class CacheSimulator(object):
         if not isinstance(addrs, Iterable):
             raise ValueError("addr must be iteratable")
         
-        self.first_level.loadstore(addrs, length=1, write_allocate=self.write_allocate)
+        self.first_level.loadstore(addrs, length=length, write_allocate=self.write_allocate)
 
     def stats(self):
         '''Collects all stats from all cache levels.'''
