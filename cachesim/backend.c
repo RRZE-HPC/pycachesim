@@ -17,7 +17,7 @@ static PyMethodDef cachesim_methods[] = {
 
 typedef struct cache_entry {
     unsigned int cl_id;
-    short dirty;
+    int dirty;
 } cache_entry;
 
 typedef struct Cache {
@@ -287,6 +287,114 @@ static PyObject* Cache_iterstore(Cache* self, PyObject *args, PyObject *kwds)
     Py_RETURN_NONE;
 }
 
+static PyObject* Cache_loadstore(Cache* self, PyObject *args, PyObject *kwds)
+{
+    PyObject *addrs;
+    unsigned int length = 1;
+    int write_allocate = 1; 
+    
+    static char *kwlist[] = {"addrs", "length", "write_allocate", NULL};
+    PyArg_ParseTupleAndKeywords(args, kwds, "O|Ii", kwlist, &addrs, &length, &write_allocate);
+    
+    // Get and check iterator
+    PyObject *addrs_iter = PyObject_GetIter(addrs);
+    if(addrs_iter == NULL) {
+        PyErr_SetString(PyExc_ValueError, "addrs is not iteratable");
+        return NULL;
+    }
+    
+    // Iterate of elements in addrs
+    PyObject *loadstore_item, *load_addrs, *store_addrs, *addr, *load_iter, *store_iter;
+    while((loadstore_item = PyIter_Next(addrs_iter))) {
+        if(!PySequence_Check(loadstore_item)) {
+            PyErr_SetString(PyExc_ValueError, "addrs element does not provide a sequence protocol");
+            return NULL;
+        }
+        // PySys_WriteStdout("LENGTH=%i\n", PySequence_Length(loadstore_item));
+        if(PySequence_Length(loadstore_item) != 2){
+            PyErr_SetString(PyExc_ValueError, "each addrs element needs exactly two elements");
+            return NULL;
+        }
+        load_addrs = PySequence_GetItem(loadstore_item, 0);
+        store_addrs = PySequence_GetItem(loadstore_item, 1);
+        
+        // Unless None (otherwise ignore loads)
+        if(load_addrs != Py_None) {
+            if(!PySequence_Check(load_addrs)) {
+                PyErr_SetString(
+                    PyExc_ValueError, "load element does not provide a sequence protocol");
+                return NULL;
+            }
+
+            // FIXME maybe this is better: Pass along to iterstore
+            //Cache_iterstore(self, store_addrs, length)
+            
+            // Iterate of elements in load_addrs
+            load_iter = PyObject_GetIter(load_addrs);
+            if(load_iter == NULL) {
+                PyErr_SetString(PyExc_ValueError, "load address is not iteratable");
+                return NULL;
+            }
+            while((addr = PyIter_Next(load_iter))) {
+                // Each address is expanded to a certain length (default is 1)
+                for(int i=0; i<length; i++) {
+#if PY_MAJOR_VERSION >= 3
+                    Cache__load(self, PyLong_AsUnsignedLongMask(addr)+i);
+#else
+                    Cache__load(self, PyLong_AsUnsignedLongMask(addr)+i);
+#endif
+                }
+                Py_DECREF(addr);
+            }
+        }
+        
+        // Unless None (ortherwise ignore stores)
+        
+        if(store_addrs != Py_None) {
+            if(!PySequence_Check(store_addrs)) {
+                PyErr_SetString(
+                    PyExc_ValueError, "store element does not provide a sequence protocol");
+                return NULL;
+            }
+            
+            // FIXME maybe this is better: Pass along to iterstore
+            //Cache_iterload(self, load_addrs, length)
+            
+            // Iterate of elements in store_addrs
+            store_iter = PyObject_GetIter(store_addrs);
+            if(store_iter == NULL) {
+                PyErr_SetString(PyExc_ValueError, "store address is not iteratable");
+                return NULL;
+            }
+            while((addr = PyIter_Next(store_iter))) {
+                // Each address is expanded to a certain length (default is 1)
+                for(int i=0; i<length; i++) {
+                    // Handle write-allocate
+                    if(write_allocate) {
+#if PY_MAJOR_VERSION >= 3
+                        Cache__load(self, PyLong_AsUnsignedLongMask(addr)+i);
+#else
+                        Cache__load(self, PyLong_AsUnsignedLongMask(addr)+i);
+#endif
+                    }
+#if PY_MAJOR_VERSION >= 3
+                    Cache__store(self, PyLong_AsUnsignedLongMask(addr)+i);
+#else
+                    Cache__store(self, PyLong_AsUnsignedLongMask(addr)+i);
+#endif
+                }
+                Py_DECREF(addr);
+            }
+        }
+        
+        Py_DECREF(load_addrs);
+        Py_DECREF(store_addrs);
+        Py_DECREF(loadstore_item);
+    }
+    Py_DECREF(addrs_iter);
+    Py_RETURN_NONE;
+}
+
 static PyObject* Cache_contains(Cache* self, PyObject *args, PyObject *kwds) {
     unsigned int addr;
 
@@ -309,6 +417,7 @@ static PyMethodDef Cache_methods[] = {
     {"iterload", (PyCFunction)Cache_iterload, METH_VARARGS|METH_KEYWORDS, NULL},
     {"store", (PyCFunction)Cache_store, METH_VARARGS|METH_KEYWORDS, NULL},
     {"iterstore", (PyCFunction)Cache_iterstore, METH_VARARGS|METH_KEYWORDS, NULL},
+    {"loadstore", (PyCFunction)Cache_loadstore, METH_VARARGS|METH_KEYWORDS, NULL},
     {"contains", (PyCFunction)Cache_contains, METH_VARARGS, NULL},
     
     /* Sentinel */

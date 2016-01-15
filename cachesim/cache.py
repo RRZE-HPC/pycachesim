@@ -45,7 +45,6 @@ class CacheSimulator(object):
         for l in self.levels():  # iterating to last level
             self.main_memory = l
         
-        self.warmup_mode = False
         self.write_allocate = write_allocate
     
     def reset_stats(self):
@@ -60,7 +59,7 @@ class CacheSimulator(object):
         '''Loads one or more addresses.
         
         if last_addr is not None, it all addresses between addr and last_addr (exclusive) are loaded
-        if length is not None, all address from addr until addr+length (exclusive) are loaded
+        if lengh is given, all address from addr until addr+length (exclusive) are loaded
         '''
         if addr is None:
             return
@@ -82,6 +81,18 @@ class CacheSimulator(object):
             self.first_level.store(addr, last_addr=last_addr, length=length)
         else:
             self.first_level.iterstore(addr, length=length)
+
+    def loadstore(self, addrs, length=1):
+        '''Takes load and store address to be evaluated in order.
+        
+        :param addrs: iteratable of address tuples: [(loads, stores), ...]
+        :param length: will load and store all bytes between addr and addr+length (for each address)
+        '''
+        
+        if not isinstance(addrs, Iterable):
+            raise ValueError("addr must be iteratable")
+        
+        self.first_level.loadstore(addrs, length=1, write_allocate=self.write_allocate)
 
     def stats(self):
         '''Collects all stats from all cache levels.'''
@@ -198,6 +209,10 @@ class Cache(object):
             self.backend.store(addr, length=last_addr-addr)
         else:
             self.backend.store(addr, length=length)
+    
+    def loadstore(self, addrs, length=1, write_allocate=True):
+        '''Loads and stores combined in one iterator'''
+        self.backend.loadstore(addrs, length, write_allocate)
     
     def size(self):
         return self.sets*self.ways*self.cl_size
