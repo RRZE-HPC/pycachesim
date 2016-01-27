@@ -30,20 +30,27 @@ class CacheSimulator(object):
     
     This is the only class that needs to be directly interfaced to.
     '''
-    def __init__(self, first_level, write_allocate=True):
+    def __init__(self, first_level, main_memory, write_allocate=True):
         '''
         Creates the interface that we interact with.
         
-        :param first_level: first memory level object.
+        :param first_level: first cache level object.
+        :param main_memory: main memory object.
         :param write_allocate: if True, will load a cacheline before store
         '''
         assert isinstance(first_level, Cache), \
             "first_level needs to be a Cache object."
+        assert isinstance(main_memory, MainMemory), \
+            "main_memory needs to be a MainMemory object"
         assert write_allocate, "Non write-allocate architectures are currently not supported."
         
         self.first_level = first_level
-        for l in self.levels():  # iterating to last level
-            self.main_memory = l
+        for l in self.levels(with_mem=False):  # iterating to last level
+            self.last_level = l
+        
+        assert main_memory.last_level == self.last_level, \
+            "Main memory's last level reference needs to coincide with the last cache level."
+        self.main_memory = main_memory
         
         self.write_allocate = write_allocate
     
@@ -99,11 +106,14 @@ class CacheSimulator(object):
         for c in self.levels():
             yield c.stats
 
-    def levels(self):
+    def levels(self, with_mem=True):
         p = self.first_level
         while p is not None:
             yield p
             p = p.parent
+        
+        if with_mem:
+            yield self.main_memory
     
     # def draw_array(self, start, width, height, block=1):
     #     length = (width*height)//block
@@ -128,13 +138,13 @@ class CacheSimulator(object):
     #     return canvas
 
     def __repr__(self):
-        return 'CacheSimulator({!r})'.format(self.first_level)
+        return 'CacheSimulator({!r}, {!r})'.format(self.first_level, self.main_memory)
 
 
 class Cache(object):
     replacement_policy_enum = {"FIFO": 0, "LRU": 1, "MRU": 2, "RR": 3}
     
-    def __init__(self, sets, ways, cl_size, replacement_policy="LRU", parent=None, level=None):
+    def __init__(self, sets, ways, cl_size, replacement_policy="LRU", parent=None):
         '''Creates one cache level out of given configuration.
     
         :param sets: total number of sets, if 1 cache will be full-associative
@@ -220,3 +230,39 @@ class Cache(object):
     def __repr__(self):
         return 'Cache(sets={!r}, ways={!r}, cl_size={!r}, replacement_policy={!r}, parent={!r})'.format(
             self.sets, self.ways, self.cl_size, self.replacement_policy, self.parent)
+
+
+class MainMemory(object):
+    def __init__(self, last_level):
+        '''Creates one cache level out of given configuration.
+    
+        :param last_level: last level cache
+        
+        '''
+        assert isinstance(last_level, Cache), \
+            "last_level needs to be a Cache object."
+        assert last_level.parent is None, \
+            "last_level must be a last level cache (last_level.parent is None)."
+        
+        self.last_level = last_level
+    
+    def reset_stats(self):
+        # since all stats in main memory are derived from the last level cache, there is nothing to 
+        # reset
+        pass
+    
+    def __getattr__(self, key):
+        try:
+            return self.stats[key]
+        except KeyError:
+            raise AttributeError
+    
+    @property
+    def stats(self):
+        return {'LOAD': self.last_level.MISS,
+                'STORE': self.last_level.STORE,
+                'HIT': self.last_level.MISS,
+                'MISS': 0}
+    
+    def __repr__(self):
+        return 'MainMemory(last_level={!r})'.format(self.last_level)
