@@ -34,13 +34,14 @@ Usage
 
 .. code-block:: python
 
-    from cachesim import CacheSimulator, Cache
+    from cachesim import CacheSimulator, Cache, MainMemory
     
     cacheline_size = 64
+    mem = MainMemory(l3)
     l3 = Cache(20480, 16, cacheline_size, "LRU")  # 20MB 16-ways
     l2 = Cache(512, 8, cacheline_size, "LRU", parent=l3)  # 256kB 8-ways
     l1 = Cache(64, 8, cacheline_size, "LRU", parent=l2)  # 32kB 8-ways
-    cs = CacheSimulator(l1, write_allocate=True)
+    cs = CacheSimulator(l1, mem, write_allocate=True)
     
     cs.load(2342)  # Loads one byte from address 2342, should be a miss in all cache-levels
     cs.store(512, length=8)  # stores 8 bytes to addresses 512-519,
@@ -55,9 +56,10 @@ This should return:
 
     [{u'LOAD': 17L, u'MISS': 2L, u'HIT': 15L, u'STORE': 8L},
      {u'LOAD': 2L, u'MISS': 2L, u'HIT': 0L, u'STORE': 8L},
-     {u'LOAD': 2L, u'MISS': 2L, u'HIT': 0L, u'STORE': 8L}]
+     {u'LOAD': 2L, u'MISS': 2L, u'HIT': 0L, u'STORE': 8L},
+     {u'LOAD': 2L, u'MISS': 0L, u'HIT': 2L, u'STORE': 8L}]
 
-Each dictionary refers to one cache-level, starting with L1. The 17 loads are the sum of all byte-wise access to the cache-hierarchy. 1 (from first load) +8 (from store with write-allocate) +8 (from second load) = 17.
+Each dictionary refers to one memory-level, starting with L1 and ending with main memory. The 17 loads are the sum of all byte-wise access to the cache-hierarchy. 1 (from first load) +8 (from store with write-allocate) +8 (from second load) = 17.
 
 The 15 hits, are for bytes which were cached already. The high number is due to the byte-wise operation of the interface, so 15 bytes were already present in cache. Internally the pycachesim operates on cache-lines, which all addresses get transformed to. Thus, the two misses throughout all cache-levels are actually two complete cache-lines and after the cache-line had been loaded the consecutive access to the same cache-line are handled as hits.
 
