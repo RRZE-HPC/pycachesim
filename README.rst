@@ -37,10 +37,10 @@ Usage
     from cachesim import CacheSimulator, Cache, MainMemory
     
     cacheline_size = 64
-    mem = MainMemory(l3)
     l3 = Cache(20480, 16, cacheline_size, "LRU")  # 20MB 16-ways
     l2 = Cache(512, 8, cacheline_size, "LRU", parent=l3)  # 256kB 8-ways
     l1 = Cache(64, 8, cacheline_size, "LRU", parent=l2)  # 32kB 8-ways
+    mem = MainMemory(l3)
     cs = CacheSimulator(l1, mem, write_allocate=True)
     
     cs.load(2342)  # Loads one byte from address 2342, should be a miss in all cache-levels
