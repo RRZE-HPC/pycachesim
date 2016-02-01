@@ -9,9 +9,9 @@ from cachesim import CacheSimulator, Cache, MainMemory
 
 class TestHighlevel(unittest.TestCase):
     def test_fill_nocl(self):
-        l3 = Cache(4, 8, 1, "LRU")
-        l2 = Cache(4, 4, 1, "LRU", parent=l3)
-        l1 = Cache(2, 4, 1, "LRU", parent=l2)
+        l3 = Cache("L3", 4, 8, 1, "LRU", "write-back write-allocate")
+        l2 = Cache("L2", 4, 4, 1, "LRU", "write-back write-allocate", store_to=l3, load_from=l3)
+        l1 = Cache("L1", 2, 4, 1, "LRU", "write-back write-allocate", store_to=l2, load_from=l2)
         mem = MainMemory(l3)
         mh = CacheSimulator(l1, mem)
     
@@ -23,9 +23,9 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l3.cached, set(range(16,48)))
 
     def test_fill(self):
-        l3 = Cache(4, 8, 8,"LRU")
-        l2 = Cache(4, 4, 8,"LRU", parent=l3)
-        l1 = Cache(2, 4, 8,"LRU", parent=l2)
+        l3 = Cache("L3", 4, 8, 8,"LRU", "write-back write-allocate")
+        l2 = Cache("L2", 4, 4, 8,"LRU", "write-back write-allocate", store_to=l3, load_from=l3)
+        l1 = Cache("L1", 2, 4, 8,"LRU", "write-back write-allocate", store_to=l2, load_from=l2)
         mem = MainMemory(l3)
         mh = CacheSimulator(l1, mem)
     
@@ -39,9 +39,14 @@ class TestHighlevel(unittest.TestCase):
     def _get_SandyEP_caches(self):
         # Cache hierarchy as found in a Sandy Brige EP:
         cacheline_size = 64
-        l3 = Cache(20480, 16, cacheline_size, "LRU")  # 20MB 16-ways
-        l2 = Cache(512, 8, cacheline_size, "LRU", parent=l3)  # 256kB 8-ways
-        l1 = Cache(64, 8, cacheline_size, "LRU", parent=l2)  # 32kB 8-ways
+        l3 = Cache("L3", 20480, 16, cacheline_size,
+                   "LRU", "write-back write-allocate")  # 20MB 16-ways
+        l2 = Cache("L2", 512, 8, cacheline_size,
+                   "LRU", "write-back write-allocate",
+                   store_to=l3, load_from=l3)  # 256kB 8-ways
+        l1 = Cache("L1", 64, 8, cacheline_size,
+                   "LRU", "write-back write-allocate",
+                   store_to=l2, load_from=l2)  # 32kB 8-ways
         mem = MainMemory(l3)
         mh = CacheSimulator(l1, mem, write_allocate=True)
         return mh, l1, l2, l3, mem, cacheline_size 

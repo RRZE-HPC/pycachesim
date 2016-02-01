@@ -19,10 +19,13 @@ Current features:
 Planned features:
  * Rules to define the interaction between cache levels (e.g., exclusive caches, copy-back,...)
  * Support write-through architectures
+ * Report cachelines and bytes on all levels
  * Report timeline of cache events
  * Visualize events (html file?)
  * More detailed store/evict handling (e.g., using dirty bits)
  * (uncertain) instruction cache
+ * Optional classification into compulsory/capacity and conflict misses (by simulating other cache configurations in parallel)
+ * (uncertain) multi-core support
  
 License
 -------

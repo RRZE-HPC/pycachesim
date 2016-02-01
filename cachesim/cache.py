@@ -110,7 +110,8 @@ class CacheSimulator(object):
         p = self.first_level
         while p is not None:
             yield p
-            p = p.parent
+            # FIXME victim caches will be victims of ignorance (unreachable via .load_from)
+            p = p.load_from
         
         if with_mem:
             yield self.main_memory
@@ -143,8 +144,13 @@ class CacheSimulator(object):
 
 class Cache(object):
     replacement_policy_enum = {"FIFO": 0, "LRU": 1, "MRU": 2, "RR": 3}
+    write_policy_enum = {"write-back write-allocate": 0, "write-through non-write-allocate": 1}
     
-    def __init__(self, sets, ways, cl_size, replacement_policy="LRU", parent=None):
+    def __init__(self, name, sets, ways, cl_size,
+                 replacement_policy="LRU",
+                 write_policy="write-through write-allocate",
+                 store_to=None, load_from=None,
+                 upstream_inclusive=True):
         '''Creates one cache level out of given configuration.
     
         :param sets: total number of sets, if 1 cache will be full-associative
@@ -159,26 +165,44 @@ class Cache(object):
         Instantization has to happen from last level cache to first level cache, since each
         subsequent level requires a reference of the other level.
         '''
-        assert parent is None or isinstance(parent, Cache), \
-            "parent needs to be None or a Cache object."
+        assert store_to is None or isinstance(store_to, Cache), \
+            "store_to needs to be None or a Cache object."
+        assert load_from is None or isinstance(load_from, Cache), \
+            "load_from needs to be None or a Cache object."
         assert is_power2(cl_size), \
             "cl_size needs to be a power of two."
-        assert parent is None or parent.cl_size <= cl_size, \
+        assert store_to is None or store_to.cl_size <= cl_size, \
+            "cl_size may only increase towards main memory."
+        assert load_from is None or load_from.cl_size <= cl_size, \
             "cl_size may only increase towards main memory."
         assert is_power2(ways), "ways needs to be a power of 2"
         assert replacement_policy in self.replacement_policy_enum, \
             "Unsupported replacement strategy, we only support: "+ \
             ', '.join(self.replacement_policy_enum)
+        assert write_policy in self.write_policy_enum, \
+            "Unsupported write policy, we only support: "+ \
+            ', '.join(self.write_policy_enum)
         
+        self.name = name
         self.replacement_policy = replacement_policy
         self.replacement_policy_id = self.replacement_policy_enum[replacement_policy]
-        self.parent = parent
+        self.write_policy = write_policy
+        self.write_policy_id = self.write_policy_enum[write_policy]
+        self.store_to = store_to
+        self.load_from = load_from
+        self.upstream_inclusive = upstream_inclusive
         
-        if parent is not None:
-            self.backend = backend.Cache(
-                sets, ways, cl_size, self.replacement_policy_id, parent.backend)
-        else:
-            self.backend = backend.Cache(sets, ways, cl_size, self.replacement_policy_id)
+        self.backend = backend.Cache(
+            name, sets, ways, cl_size,
+            self.replacement_policy_id, self.write_policy_id,
+            self._get_backend(store_to), self._get_backend(load_from),
+            upstream_inclusive)
+    
+    def _get_backend(self, cache):
+        '''Returns backend of *cache* unless *cache* is None, then None is returned.'''
+        if cache is not None:
+            return cache.backend
+        return None
     
     def get_cl_start(self, addr):
         '''Returns first address belonging to the same cacheline as *addr*'''
@@ -241,8 +265,8 @@ class MainMemory(object):
         '''
         assert isinstance(last_level, Cache), \
             "last_level needs to be a Cache object."
-        assert last_level.parent is None, \
-            "last_level must be a last level cache (last_level.parent is None)."
+        assert last_level.load_from is None, \
+            "last_level must be a last level cache (last_level.load_from is None)."
         
         self.last_level = last_level
     
