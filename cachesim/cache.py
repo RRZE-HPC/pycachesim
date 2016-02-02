@@ -59,7 +59,7 @@ class CacheSimulator(object):
         
         Use this after warming up the caches to get a steady state result.
         '''
-        for c in self.levels():
+        for c in self.levels(with_mem=False):
             c.reset_stats()
 
     def load(self, addr, last_addr=None, length=1):
