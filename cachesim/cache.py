@@ -30,19 +30,17 @@ class CacheSimulator(object):
     
     This is the only class that needs to be directly interfaced to.
     '''
-    def __init__(self, first_level, main_memory, write_allocate=True):
+    def __init__(self, first_level, main_memory):
         '''
         Creates the interface that we interact with.
         
         :param first_level: first cache level object.
         :param main_memory: main memory object.
-        :param write_allocate: if True, will load a cacheline before store
         '''
         assert isinstance(first_level, Cache), \
             "first_level needs to be a Cache object."
         assert isinstance(main_memory, MainMemory), \
             "main_memory needs to be a MainMemory object"
-        assert write_allocate, "Non write-allocate architectures are currently not supported."
         
         self.first_level = first_level
         for l in self.levels(with_mem=False):  # iterating to last level
@@ -52,8 +50,6 @@ class CacheSimulator(object):
             "Main memory's last level reference needs to coincide with the last cache level."
         self.main_memory = main_memory
         
-        self.write_allocate = write_allocate
-    
     def reset_stats(self):
         '''Resets statistics in all cache levels.
         
@@ -61,31 +57,34 @@ class CacheSimulator(object):
         '''
         for c in self.levels(with_mem=False):
             c.reset_stats()
+    
+    def force_write_back(self):
+        '''Write all pending dirty lines back.'''
+        # force_write_back() is acting recursive by it self, but multiple write-back first level 
+        # caches are imaginable. Better safe then sorry:
+        for c in self.levels(with_mem=False):
+            c.force_write_back()
 
-    def load(self, addr, last_addr=None, length=1):
+    def load(self, addr, length=1):
         '''Loads one or more addresses.
         
-        if last_addr is not None, it all addresses between addr and last_addr (exclusive) are loaded
         if lengh is given, all address from addr until addr+length (exclusive) are loaded
         '''
         if addr is None:
             return
         elif not isinstance(addr, Iterable):
-            self.first_level.load(addr, last_addr=last_addr, length=length)
+            self.first_level.load(addr, length=length)
         else:
             self.first_level.iterload(addr, length=length)
     
-    def store(self, addr, last_addr=None, length=1, non_temporal=False):
+    def store(self, addr, length=1, non_temporal=False):
         if non_temporal:
             raise ValueError("non_temporal stores are not yet supported")
-        
-        if self.write_allocate:
-            self.load(addr, last_addr, length)
         
         if addr is None:
             return
         elif not isinstance(addr, Iterable):
-            self.first_level.store(addr, last_addr=last_addr, length=length)
+            self.first_level.store(addr, length=length)
         else:
             self.first_level.iterstore(addr, length=length)
 
@@ -99,7 +98,7 @@ class CacheSimulator(object):
         if not isinstance(addrs, Iterable):
             raise ValueError("addr must be iteratable")
         
-        self.first_level.loadstore(addrs, length=length, write_allocate=self.write_allocate)
+        self.first_level.loadstore(addrs, length=length)
 
     def stats(self):
         '''Collects all stats from all cache levels.'''
@@ -149,8 +148,8 @@ class Cache(object):
     def __init__(self, name, sets, ways, cl_size,
                  replacement_policy="LRU",
                  write_policy="write-through write-allocate",
-                 store_to=None, load_from=None,
-                 upstream_inclusive=True):
+                 load_from=None, store_to=None, victims_to=None,
+                 swap_on_load=False):
         '''Creates one cache level out of given configuration.
     
         :param sets: total number of sets, if 1 cache will be full-associative
@@ -169,6 +168,8 @@ class Cache(object):
             "store_to needs to be None or a Cache object."
         assert load_from is None or isinstance(load_from, Cache), \
             "load_from needs to be None or a Cache object."
+        assert victims_to is None or isinstance(load_from, Cache), \
+            "victims_to needs to be None or a Cache object."
         assert is_power2(cl_size), \
             "cl_size needs to be a power of two."
         assert store_to is None or store_to.cl_size <= cl_size, \
@@ -182,6 +183,8 @@ class Cache(object):
         assert write_policy in self.write_policy_enum, \
             "Unsupported write policy, we only support: "+ \
             ', '.join(self.write_policy_enum)
+        # TODO check that ways only increase from higher  to lower _exclusive_ cache
+        # other wise swap won't be a valid procedure to ensure exclusiveness
         
         self.name = name
         self.replacement_policy = replacement_policy
@@ -190,13 +193,15 @@ class Cache(object):
         self.write_policy_id = self.write_policy_enum[write_policy]
         self.store_to = store_to
         self.load_from = load_from
-        self.upstream_inclusive = upstream_inclusive
+        self.victims_to = victims_to
+        self.swap_on_load = swap_on_load
         
         self.backend = backend.Cache(
             name, sets, ways, cl_size,
             self.replacement_policy_id, self.write_policy_id,
-            self._get_backend(store_to), self._get_backend(load_from),
-            upstream_inclusive)
+            self._get_backend(load_from), self._get_backend(store_to),
+            self._get_backend(victims_to),
+            swap_on_load)
     
     def _get_backend(self, cache):
         '''Returns backend of *cache* unless *cache* is None, then None is returned.'''
@@ -227,26 +232,6 @@ class Cache(object):
                 'STORE': self.backend.STORE,
                 'HIT': self.backend.HIT,
                 'MISS': self.backend.MISS}
-    
-    def load(self, addr, last_addr=None, length=1):
-        '''Load elements into the cache.
-        '''
-        if last_addr is not None:
-            self.backend.load(addr, length=last_addr-addr)
-        else:
-            self.backend.load(addr, length=length)
-
-    def store(self, addr, last_addr=None, length=1):
-        '''Stores elements via the cache.
-        '''
-        if last_addr is not None:
-            self.backend.store(addr, length=last_addr-addr)
-        else:
-            self.backend.store(addr, length=length)
-    
-    def loadstore(self, addrs, length=1, write_allocate=True):
-        '''Loads and stores combined in one iterator'''
-        self.backend.loadstore(addrs, length, write_allocate)
     
     def size(self):
         return self.sets*self.ways*self.cl_size

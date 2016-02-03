@@ -28,13 +28,15 @@ typedef struct Cache {
     unsigned int ways;
     unsigned int cl_size;
     unsigned int cl_bits;
-    int replacement_policy; // 0 = FIFO, 1 = LRU, 2 = MRU, 3 = RR 
-                            // (state is kept in the ordering)
-                            // for LFU an additional field would be required to capture state
-    int write_policy; // 0 = write-back and write-allocate, 1 = write-through and non-write-allocate
+    int replacement_policy_id; // 0 = FIFO, 1 = LRU, 2 = MRU, 3 = RR 
+                               // (state is kept in the ordering)
+                               // for LFU an additional field would be required to capture state
+    int write_policy_id; // 0 = write-back and write-allocate,
+                         // 1 = write-through and non-write-allocate
     PyObject *store_to;
     PyObject *load_from;
-    int upstream_inclusive;
+    PyObject *victims_to;
+    int swap_on_load;
     
     cache_entry *placement;
     unsigned int LOAD;
@@ -67,14 +69,16 @@ static PyMemberDef Cache_members[] = {
      "number of bytes in a cacheline"},
     {"cl_bits", T_UINT, offsetof(Cache, cl_bits), 0,
      "number of bits used to identiy individual bytes in a cacheline"},
-    {"replacement_policy_id", T_INT, offsetof(Cache, replacement_policy), 0,
+    {"replacement_policy_id", T_INT, offsetof(Cache, replacement_policy_id), 0,
      "replacement strategy of cachlevel"},
-    {"write_policy_id", T_INT, offsetof(Cache, write_policy), 0,
+    {"write_policy_id", T_INT, offsetof(Cache, write_policy_id), 0,
      "write strategy of cachlevel"},
     {"load_from", T_OBJECT_EX, offsetof(Cache, load_from), 0,
      "load parent Cache object (cache level which is closer to main memory)"},
     {"store_to", T_OBJECT_EX, offsetof(Cache, store_to), 0,
      "store parent Cache object (cache level which is closer to main memory)"},
+    {"victims_to", T_OBJECT_EX, offsetof(Cache, victims_to), 0,
+     "Cache object where victims will be send to (closer to main memory, None if victims vanish)"},
     {"LOAD", T_UINT, offsetof(Cache, LOAD), 0,
      "number of loads performed since last counter reset"},
     {"STORE", T_UINT, offsetof(Cache, STORE), 0,
@@ -94,7 +98,30 @@ inline static unsigned int Cache__get_set_id(Cache* self, unsigned int cl_id) {
     return cl_id % self->sets;
 }
 
-static void Cache__load(Cache* self, unsigned int addr) {
+inline static int Cache__get_location(Cache* self, unsigned int cl_id, unsigned int set_id) {
+    // Returns the location a cacheline has in a cache
+    // if cacheline is not present, returns -1
+    // TODO use sorted data structure for faster searches in case of large number of 
+    // ways or full-associativity?
+    
+    for(int i=0; i<self->ways; i++) {
+        if(self->placement[set_id*self->ways+i].cl_id == cl_id) {
+            return i;
+        }
+    }
+    
+    return -1; // Not found
+}
+
+static void Cache__store(Cache* self, unsigned int addr);
+
+static int Cache__load(Cache* self, unsigned int addr) {
+    /*
+    Signals request of addr by higher level. This handles hits and misses and returns location of
+    cacheline. Location refers to the location in placement under ways constraints:
+    self->placement[set_id*self->ways+LOCATION]
+    */
+    
     self->LOAD++;
     unsigned int cl_id = Cache__get_cacheline_id(self, addr);
     unsigned int set_id = Cache__get_set_id(self, cl_id);
@@ -103,33 +130,32 @@ static void Cache__load(Cache* self, unsigned int addr) {
     //}
 
     // Check if cl_id is already cached
-    // TODO use sorted data structure for faster searches in case of large number of 
-    // ways or full-associativity?
-    for(int i=0; i<self->ways; i++) {
-        if(self->placement[set_id*self->ways+i].cl_id == cl_id) {
-            // HIT: Found it!
-            self->HIT++;
-            // if(self->ways == 16 && set_id == 0 && self->MISS == 0) {
-            //     PySys_WriteStdout("HIT self->LOAD=%i addr=%i cl_id=%i set_id=%i\n", self->LOAD, addr, cl_id, set_id);
-            // }
+    int location = Cache__get_location(self, cl_id, set_id);
+    if(location != -1) {
+        // HIT: Found it!
+        self->HIT++;
+        // if(self->ways == 16 && set_id == 0 && self->MISS == 0) {
+        //     PySys_WriteStdout("HIT self->LOAD=%i addr=%i cl_id=%i set_id=%i\n", self->LOAD, addr, cl_id, set_id);
+        // }
 
-            if(self->replacement_policy == 0 || self->replacement_policy == 3) {
-                // FIFO: nothing to do
-                // RR: nothing to do
-            } else if(self->replacement_policy == 1 || self->replacement_policy == 2) {
-                // LRU: Reorder elements to account for access to element
-                // MRU: Reorder elements to account for access to element
-                if(i != 0) {
-                    for(int j=i; j>0; j--) {
-                        self->placement[set_id*self->ways+j] =
-                            self->placement[set_id*self->ways+j-1];
-                    }
-                    self->placement[set_id*self->ways].cl_id = cl_id;
-                    self->placement[set_id*self->ways].dirty = 0;
+        if(self->replacement_policy_id == 0 || self->replacement_policy_id == 3) {
+            // FIFO: nothing to do
+            // RR: nothing to do
+            return location;
+        } else { // if(self->replacement_policy_id == 1 || self->replacement_policy_id == 2) {
+            // LRU: Reorder elements to account for access to element
+            // MRU: Reorder elements to account for access to element
+            if(location != 0) {
+                for(int j=location; j>0; j--) {
+                    self->placement[set_id*self->ways+j] =
+                        self->placement[set_id*self->ways+j-1];
                 }
+                self->placement[set_id*self->ways].cl_id = cl_id;
+                self->placement[set_id*self->ways].dirty = 0;
             }
-            return;
-        }
+            return 0;
+        } 
+        // TODO if this is an exclusive cache, swap delivered cacheline with swap_cl_id (here and at end -> DO NOT RETURN)
     }
 
     // MISS!
@@ -144,50 +170,62 @@ static void Cache__load(Cache* self, unsigned int addr) {
     // }
     
     // Get cacheline id to be replaced according to replacement strategy
-    int replace_cl_id, replace_idx;
+    int replace_idx;
+    cache_entry replace_entry;
     
-    if(self->replacement_policy == 0 || self->replacement_policy == 1) {
+    if(self->replacement_policy_id == 0 || self->replacement_policy_id == 1) {
         // FIFO: replace end of queue
         // LRU: replace end of queue
-        replace_cl_id = self->placement[set_id*self->ways+self->ways-1].cl_id;
-    } else if(self->replacement_policy == 2) {
+        replace_idx = 0;
+        replace_entry = self->placement[set_id*self->ways+self->ways-1];
+        
+        // Reorder queue
+        for(int i=self->ways-1; i>0; i--) {
+            self->placement[set_id*self->ways+i] = self->placement[set_id*self->ways+i-1];
+        }
+    } else if(self->replacement_policy_id == 2) {
         // MRU: replace first of queue
-        replace_cl_id = self->placement[set_id*self->ways].cl_id;
-    } else if(self->replacement_policy == 3) {
+        replace_idx = self->ways-1;
+        replace_entry = self->placement[set_id*self->ways];
+        
+        // Reorder queue
+        for(int i=0; i>self->ways-1; i++) {
+            self->placement[set_id*self->ways+i] = self->placement[set_id*self->ways+i+1];
+        }
+    } else { // if(self->replacement_policy_id == 3) {
         // RR: replace random element
         replace_idx = rand() & (self->ways - 1);
-        replace_cl_id = self->placement[set_id*self->ways+replace_idx].cl_id;
+        replace_entry = self->placement[set_id*self->ways+replace_idx];
     }
     
     // Load from lower cachelevel
     if(self->load_from != NULL) {
         Py_INCREF(self->load_from);
-        Cache__load((Cache*)(self->load_from), addr, cl_id);
+        // TODO use replace_entry to inform other cache of swap (in case of exclusive caches)
+        Cache__load((Cache*)self->load_from, addr); // TODO, replace_cl_id);
         Py_DECREF(self->load_from);
-    }
+    } // else last-level-cache
     
     // Replace other cacheline according to replacement strategy (using placement order as state)
-    if(self->replacement_policy == 0 || self->replacement_policy == 1) {
-        // FIFO: add to front of queue
-        // LRU: add to front of queue
-        for(int i=self->ways-1; i>0; i--) {
-            self->placement[set_id*self->ways+i] = self->placement[set_id*self->ways+i-1];
+    self->placement[set_id*self->ways+replace_idx].cl_id = cl_id;
+    self->placement[set_id*self->ways+replace_idx].dirty = 0;
+    
+    // write-back: check for dirty bit of replaced and inform next lower level of store
+    if(self->write_policy_id == 0) { // "write-back write-allocate"
+        if(replace_entry.dirty == 1) {
+            if(self->store_to != NULL) {
+                Py_INCREF(self->store_to);
+                // TODO addrs vs cl_id is not nicely solved here
+                Cache__store((Cache*)self->store_to, replace_entry.cl_id*self->cl_size);
+                Py_DECREF(self->store_to);
+            } // else last-level-cache
         }
-        self->placement[set_id*self->ways].cl_id = cl_id;
-        self->placement[set_id*self->ways].dirty = 0;
-    } else if(self->replacement_policy == 2) {
-        // MRU: add to end of queue
-        for(int i=0; i>self->ways-1; i++) {
-            self->placement[set_id*self->ways+i] = self->placement[set_id*self->ways+i+1];
-        }
-        self->placement[set_id*self->ways+self->ways-1].cl_id = cl_id;
-        self->placement[set_id*self->ways+self->ways-1].dirty = 0;
-    } else if(self->replacement_policy == 3) {
-        // RR: replace random element
-        // replace_idx was randomly chosen above
-        self->placement[set_id*self->ways+replace_idx].cl_id = cl_id;
-        self->placement[set_id*self->ways+replace_idx].dirty = 0;
     }
+    
+    return replace_idx;
+    
+    // TODO if this is an exclusive cache (swap_on_load = True), swap delivered cacheline with swap_cl_id (here and at hit)
+    // TODO deliver victims to victims cache, if configured
 }
 
 static void Cache__store(Cache* self, unsigned int addr) {
@@ -196,12 +234,37 @@ static void Cache__store(Cache* self, unsigned int addr) {
     // unsigned int set_id = Cache__get_set_id(self, cl_id);
     //PySys_WriteStdout("STORE=%i addr=%i cl_id=%i set_id=%i\n", self->LOAD, addr, cl_id, set_id);
     
-    
-    // Store to lower cachelevel
-    if(self->store_to != NULL) {
-        Py_INCREF(self->store_to);
-        Cache__store((Cache*)(self->store_to), addr);
-        Py_DECREF(self->store_to);
+    if(self->write_policy_id == 0) {
+        // Write policy is "write-back write-allocate"
+        
+        unsigned int cl_id = Cache__get_cacheline_id(self, addr);
+        unsigned int set_id = Cache__get_set_id(self, cl_id);
+        int location = Cache__get_location(self, cl_id, set_id);
+        
+        // Make sure line is loaded into cache (this will produce HITs and MISSes):
+        if(location == -1) {
+            // TODO does this also make sens if store with write-allocate and MISS happens on L2?
+            // or would this inject byte loads instead of CL loads into the statistic
+            for(int i=0; i<self->cl_size; i++) {
+                location = Cache__load(self, addr+i);
+            }
+        }
+        
+        // Mark cacheline as dirty for later write-back during eviction
+        self->placement[set_id*self->ways+location].dirty = 1;
+        
+        // TODO handle write-allocate without messing up the statistics
+    } else { // if(self->write_policy_id == 1) {
+        // Write policy is "write-through non-write-allocate"
+        
+        // TODO coalesce writes, how? 
+        
+        // Store to lower cachelevel
+        if(self->store_to != NULL) {
+            Py_INCREF(self->store_to);
+            Cache__store((Cache*)(self->store_to), addr);
+            Py_DECREF(self->store_to);
+        } // else last-level-cache
     }
 }
 
@@ -215,7 +278,8 @@ static PyObject* Cache_load(Cache* self, PyObject *args, PyObject *kwds)
     
     // Doing this in c, tremendously increases the speed for multiple elements
     for(int i=0; i<length; i++) {
-        Cache__load(self, addr+i);
+        Cache__load(self, addr+i); // TODO , 0); 
+        // Swap cl_id is irrelevant here, since this is only called on first level cache
     }
     Py_RETURN_NONE;
 }
@@ -241,9 +305,11 @@ static PyObject* Cache_iterload(Cache* self, PyObject *args, PyObject *kwds)
         // Each address is expanded to a certain length (default is 1)
         for(int i=0; i<length; i++) {
 #if PY_MAJOR_VERSION >= 3
-            Cache__load(self, PyLong_AsUnsignedLongMask(addr)+i);
+            Cache__load(self, PyLong_AsUnsignedLongMask(addr)+i); // TODO , 0); 
+            // Swap cl_id is irrelevant here, since this is only called on first level cache
 #else
-            Cache__load(self, PyInt_AsUnsignedLongMask(addr)+i);
+            Cache__load(self, PyInt_AsUnsignedLongMask(addr)+i); // TODO , 0); 
+            // Swap cl_id is irrelevant here, since this is only called on first level cache
 #endif
         }
         Py_DECREF(addr);
@@ -303,10 +369,9 @@ static PyObject* Cache_loadstore(Cache* self, PyObject *args, PyObject *kwds)
 {
     PyObject *addrs;
     unsigned int length = 1;
-    int write_allocate = 1; 
     
-    static char *kwlist[] = {"addrs", "length", "write_allocate", NULL};
-    PyArg_ParseTupleAndKeywords(args, kwds, "O|Ii", kwlist, &addrs, &length, &write_allocate);
+    static char *kwlist[] = {"addrs", "length", NULL};
+    PyArg_ParseTupleAndKeywords(args, kwds, "O|I", kwlist, &addrs, &length);
     
     // Get and check iterator
     PyObject *addrs_iter = PyObject_GetIter(addrs);
@@ -360,8 +425,7 @@ static PyObject* Cache_loadstore(Cache* self, PyObject *args, PyObject *kwds)
             }
         }
         
-        // Unless None (ortherwise ignore stores)
-        
+        // If store addresses are given
         if(store_addrs != Py_None) {
             if(!PySequence_Check(store_addrs)) {
                 PyErr_SetString(
@@ -381,14 +445,6 @@ static PyObject* Cache_loadstore(Cache* self, PyObject *args, PyObject *kwds)
             while((addr = PyIter_Next(store_iter))) {
                 // Each address is expanded to a certain length (default is 1)
                 for(int i=0; i<length; i++) {
-                    // Handle write-allocate
-                    if(write_allocate) {
-#if PY_MAJOR_VERSION >= 3
-                        Cache__load(self, PyLong_AsUnsignedLongMask(addr)+i);
-#else
-                        Cache__load(self, PyLong_AsUnsignedLongMask(addr)+i);
-#endif
-                    }
 #if PY_MAJOR_VERSION >= 3
                     Cache__store(self, PyLong_AsUnsignedLongMask(addr)+i);
 #else
@@ -424,6 +480,21 @@ static PyObject* Cache_contains(Cache* self, PyObject *args, PyObject *kwds) {
     Py_RETURN_FALSE;
 }
 
+static PyObject* Cache_force_write_back(Cache* self) {
+    for(int i=0; i<self->ways*self->sets; i++) {
+        if(self->placement[i].dirty == 1) {
+            if(self->store_to != NULL) {
+                // Found dirty line, initiate write-back:
+                Py_INCREF(self->store_to);
+                Cache__store((Cache*)self->store_to, self->placement[i].cl_id*self->cl_size);
+                Py_DECREF(self->store_to);
+            }
+            self->placement[i].dirty = 0;
+        }
+    }
+    Py_RETURN_NONE;
+}
+
 static PyMethodDef Cache_methods[] = {
     {"load", (PyCFunction)Cache_load, METH_VARARGS|METH_KEYWORDS, NULL},
     {"iterload", (PyCFunction)Cache_iterload, METH_VARARGS|METH_KEYWORDS, NULL},
@@ -431,6 +502,7 @@ static PyMethodDef Cache_methods[] = {
     {"iterstore", (PyCFunction)Cache_iterstore, METH_VARARGS|METH_KEYWORDS, NULL},
     {"loadstore", (PyCFunction)Cache_loadstore, METH_VARARGS|METH_KEYWORDS, NULL},
     {"contains", (PyCFunction)Cache_contains, METH_VARARGS, NULL},
+    {"force_write_back", (PyCFunction)Cache_force_write_back, METH_VARARGS, NULL},
     
     /* Sentinel */
     {NULL, NULL}
@@ -501,21 +573,36 @@ static PyTypeObject CacheType = {
 };
 
 static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
-    PyObject *store_to, *load_from, *tmp;
-    static char *kwlist[] = {"name", "sets", "ways", "cl_size", "replacement_policy", 
-                             "write_policy", "store_to", "load_from", "upstream_inclusive", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "sIIIiiOOi", kwlist,
+    PyObject *store_to, *load_from, *victims_to, *tmp;
+    static char *kwlist[] = {"name", "sets", "ways", "cl_size", "replacement_policy_id", 
+                             "write_policy_id", "store_to", "load_from", "victims_to",
+                             "swap_on_load", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "sIIIiiOOOi", kwlist,
                                      &self->name, &self->sets, &self->ways, &self->cl_size,
-                                     &self->replacement_policy, &self->write_policy,
-                                     &store_to, &load_from,
-                                     &self->upstream_inclusive)) {
+                                     &self->replacement_policy_id, &self->write_policy_id,
+                                     &store_to, &load_from, &victims_to,
+                                     &self->swap_on_load)) {
         return -1;
+    }
+    
+    // Handle load_from parent (if given)
+    if(load_from != Py_None) {
+        if(!PyObject_IsInstance(load_from, (PyObject*)&CacheType)) {
+            PyErr_SetString(PyExc_TypeError, "load_from needs to be backend.Cache or None");
+            return -1;
+        }
+        tmp = self->load_from;
+        Py_INCREF(load_from);
+        self->load_from = load_from;
+        Py_XDECREF(tmp);
+    } else {
+        self->load_from = NULL;
     }
     
     // Handle store_to parent (if given)
     if(store_to != Py_None) {
         if(!PyObject_IsInstance(store_to, (PyObject*)&CacheType)) {
-            PyErr_SetString(PyExc_TypeError, "store_to needs to be of Type backend.Cache");
+            PyErr_SetString(PyExc_TypeError, "store_to needs to be backend.Cache or None");
             return -1;
         }
         tmp = self->store_to;
@@ -526,19 +613,22 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
         self->store_to = NULL;
     }
     
-    // Handle load_from parent (if given)
-    if(load_from != Py_None) {
-        if(!PyObject_IsInstance(load_from, (PyObject*)&CacheType)) {
-            PyErr_SetString(PyExc_TypeError, "load_from needs to be of Type backend.Cache");
+    // Handle victims_to parent (if given)
+    if(victims_to != Py_None) {
+        if(!PyObject_IsInstance(victims_to, (PyObject*)&CacheType)) {
+            PyErr_SetString(PyExc_TypeError, "victims_to needs to be backend.Cache or None");
             return -1;
         }
-        tmp = self->load_from;
-        Py_INCREF(load_from);
-        self->load_from = load_from;
+        tmp = self->victims_to;
+        Py_INCREF(victims_to);
+        self->load_from = victims_to;
         Py_XDECREF(tmp);
     } else {
-        self->load_from = NULL;
+        self->victims_to = NULL;
     }
+    
+    // TODO validate store, load and victim paths so no null objects will be used until LLC/mem? is hit
+    // should we introduce a memory object in c?
 
     self->placement = PyMem_New(struct cache_entry, self->sets*self->ways);
     for(unsigned int i=0; i<self->sets*self->ways; i++) {

@@ -4,8 +4,15 @@ Unit tests for cachesim module
 from __future__ import print_function
 
 import unittest
+from pprint import pprint
 
 from cachesim import CacheSimulator, Cache, MainMemory
+
+# TODO Required Testcases:
+# * write-through
+# * weird trees with store_to and load _from
+# * victim caches (not yet implemented)
+
 
 class TestHighlevel(unittest.TestCase):
     def test_fill_nocl(self):
@@ -15,22 +22,22 @@ class TestHighlevel(unittest.TestCase):
         mem = MainMemory(l3)
         mh = CacheSimulator(l1, mem)
     
-        mh.load(0, 32)
-        mh.load(16,48)
+        mh.load(range(0, 32))
+        mh.load(range(16,48))
         
         self.assertEqual(l1.cached, set(range(40,48)))
         self.assertEqual(l2.cached, set(range(32,48)))
         self.assertEqual(l3.cached, set(range(16,48)))
 
     def test_fill(self):
-        l3 = Cache("L3", 4, 8, 8,"LRU", "write-back write-allocate")
-        l2 = Cache("L2", 4, 4, 8,"LRU", "write-back write-allocate", store_to=l3, load_from=l3)
-        l1 = Cache("L1", 2, 4, 8,"LRU", "write-back write-allocate", store_to=l2, load_from=l2)
+        l3 = Cache("L3", 4, 8, 8, "LRU", "write-back write-allocate")
+        l2 = Cache("L2", 4, 4, 8, "LRU", "write-back write-allocate", store_to=l3, load_from=l3)
+        l1 = Cache("L1", 2, 4, 8, "LRU", "write-back write-allocate", store_to=l2, load_from=l2)
         mem = MainMemory(l3)
         mh = CacheSimulator(l1, mem)
     
-        mh.load(0, 512)
-        mh.load(448, 576)
+        mh.load(range(0, 512))
+        mh.load(range(448, 576))
         
         self.assertEqual(l1.cached, set(range(512, 576)))
         self.assertEqual(l2.cached, set(range(448, 576)))
@@ -48,15 +55,15 @@ class TestHighlevel(unittest.TestCase):
                    "LRU", "write-back write-allocate",
                    store_to=l2, load_from=l2)  # 32kB 8-ways
         mem = MainMemory(l3)
-        mh = CacheSimulator(l1, mem, write_allocate=True)
+        mh = CacheSimulator(l1, mem)
         return mh, l1, l2, l3, mem, cacheline_size 
     
     def test_large_fill(self):
         mh, l1, l2, l3, mem, cacheline_size = self._get_SandyEP_caches()
         
-        mh.load(0, 32*1024)
+        mh.load(range(0, 32*1024))
         mh.reset_stats()
-        mh.load(0, 32*1024)
+        mh.load(range(0, 32*1024))
         self.assertEqual(l1.LOAD, 32*1024)
         self.assertEqual(l2.LOAD, 0)
         self.assertEqual(l3.LOAD, 0)
@@ -73,15 +80,15 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l3.LOAD, 0)
         
         mh.reset_stats()
-        mh.load(0, 256*1024)
+        mh.load(range(0, 256*1024))
         self.assertEqual(l1.LOAD, 256*1024)
         self.assertEqual(l1.HIT, 32*1024+63*(256-32)*1024//64)
         self.assertEqual(l1.MISS, (256-32)*1024//64)
         self.assertEqual(l2.LOAD, (256-32)*1024//64)
         
-        mh.load(0, 20*1024*1024)
+        mh.load(range(0, 20*1024*1024))
         mh.reset_stats()
-        mh.load(0, 20*1024*1024)
+        mh.load(range(0, 20*1024*1024))
         self.assertEqual(l1.HIT+l2.HIT+l3.HIT, 20*1024*1024)
         self.assertEqual(l3.MISS, 0)
 
@@ -91,7 +98,7 @@ class TestHighlevel(unittest.TestCase):
     #     l2 = Cache(512, 8, 64, "LRU", parent=l3)  # 256kB 8-ways
     #     l1 = Cache(64, 8, 64, "LRU", parent=l2)  # 32kB 8-ways
     #     mh = CacheSimulator(l1, write_allocate=False)
-    #     mh.store(0, 20*1024*1024)
+    #     mh.store(range(0, 20*1024*1024))
     #
     #     self.assertEqual(l1.LOAD, 0)
     #     self.assertEqual(l2.LOAD, 0)
@@ -103,14 +110,17 @@ class TestHighlevel(unittest.TestCase):
     def test_large_store_write_allocate(self):
         mh, l1, l2, l3, mem, cacheline_size = self._get_SandyEP_caches()
 
-        mh.store(0, 20*1024*1024)
+        mh.store(range(0, 20*1024*1024))
         
-        self.assertEqual(l1.LOAD, 20*1024*1024)
+        mh.force_write_back()
+        
+        # Why loads with -1 / -64, you ask? The cache is initialized with cl_id 0. Sorry :/
+        self.assertEqual(l1.LOAD, 20*1024*1024-64)
         self.assertEqual(l2.LOAD, 20*1024*1024//64-1)
         self.assertEqual(l3.LOAD, 20*1024*1024//64-1)
         self.assertEqual(l1.STORE, 20*1024*1024)
-        self.assertEqual(l2.STORE, 20*1024*1024)
-        self.assertEqual(l3.STORE, 20*1024*1024)
+        self.assertEqual(l2.STORE, 20*1024*1024//64)
+        self.assertEqual(l3.STORE, 20*1024*1024//64)
     
     def test_large_fill_iter(self):
         mh, l1, l2, l3, mem, cacheline_size = self._get_SandyEP_caches()
@@ -142,9 +152,9 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l1.MISS, (256-32)*1024//64)
         self.assertEqual(l2.LOAD, (256-32)*1024//64)
         
-        mh.load(0, 20*1024*1024)
+        mh.load(range(0, 20*1024*1024))
         mh.reset_stats()
-        mh.load(0, 20*1024*1024)
+        mh.load(range(0, 20*1024*1024))
         self.assertEqual(l1.HIT+l2.HIT+l3.HIT, 20*1024*1024)
         self.assertEqual(l3.MISS, 0)
         self.assertEqual(mem.HIT, 0)
@@ -169,8 +179,8 @@ class TestHighlevel(unittest.TestCase):
         elements_per_cl = cacheline_size//element_size
         elements_in_cache = l1.size()//element_size
         kernel_height = 3
-        matrix_width = elements_in_cache // kernel_height // 2 +10 #Bad: +19#+18#+14#+11#+10#+6#+4#+3#+2 # TODO check other sizes
-        matrix_height = 20
+        matrix_width = elements_in_cache // kernel_height // 2 #Bad: +19#+18#+14#+11#+10#+6#+4#+3#+2 # TODO check other sizes
+        matrix_height = 100 # needs to be large enough for evictions of stores to happen
         
         # Warm up:
         # Go through half the matrix:
@@ -190,7 +200,7 @@ class TestHighlevel(unittest.TestCase):
         
         j = matrix_height//2
         warmup_imax = matrix_width//3
-        
+
         mh.reset_stats()
         
         # Benchmark:
@@ -208,17 +218,17 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l2.LOAD, 2)
         self.assertEqual(l2.HIT, 0)
         self.assertEqual(l2.MISS, 2)
-        self.assertEqual(l2.STORE, cacheline_size)
+        self.assertEqual(l2.STORE, 1)
         
         self.assertEqual(l3.LOAD, 2)
         self.assertEqual(l3.HIT, 0)
         self.assertEqual(l3.MISS, 2)
-        self.assertEqual(l3.STORE, cacheline_size)
+        self.assertEqual(l3.STORE, 1)
         
         self.assertEqual(mem.LOAD, 2)
         self.assertEqual(mem.HIT, 2)
         self.assertEqual(mem.MISS, 0)
-        self.assertEqual(mem.STORE, cacheline_size)
+        self.assertEqual(mem.STORE, 1)
 
     def test_2d5pt_L2_layerconditions(self):
         mh, l1, l2, l3, mem, cacheline_size = self._get_SandyEP_caches()
@@ -230,7 +240,7 @@ class TestHighlevel(unittest.TestCase):
         elements_in_cache = l2.size()//element_size
         kernel_height = 3
         matrix_width = elements_in_cache // kernel_height // 2  # TODO check other sizes
-        matrix_height = 20
+        matrix_height = 20 # needs to be large enough for evictions of stores to happen
         
         # Warm up:
         for j in range(1, matrix_height//2+1):
@@ -266,17 +276,17 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l2.LOAD, 4)
         self.assertEqual(l2.HIT, 2)
         self.assertEqual(l2.MISS, 2)
-        self.assertEqual(l2.STORE, cacheline_size)
+        self.assertEqual(l2.STORE, 1)
         
         self.assertEqual(l3.LOAD, 2)
         self.assertEqual(l3.HIT, 0)
         self.assertEqual(l3.MISS, 2)
-        self.assertEqual(l3.STORE, cacheline_size)
+        self.assertEqual(l3.STORE, 1)
         
         self.assertEqual(mem.LOAD, 2)
         self.assertEqual(mem.HIT, 2)
         self.assertEqual(mem.MISS, 0)
-        self.assertEqual(mem.STORE, cacheline_size)
+        self.assertEqual(mem.STORE, 1)
 
     def test_2d5pt_L2_layerconditions_loadstore(self):
         mh, l1, l2, l3, mem, cacheline_size = self._get_SandyEP_caches()
@@ -288,7 +298,7 @@ class TestHighlevel(unittest.TestCase):
         elements_in_cache = l2.size()//element_size
         kernel_height = 3
         matrix_width = elements_in_cache // kernel_height // 2  # TODO check other sizes
-        matrix_height = 20
+        matrix_height = 20 # needs to be large enough for evictions of stores to happen
         
         # Warm up:
         offsets = []
@@ -327,15 +337,15 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l2.LOAD, 4)
         self.assertEqual(l2.HIT, 2)
         self.assertEqual(l2.MISS, 2)
-        self.assertEqual(l2.STORE, cacheline_size)
+        self.assertEqual(l2.STORE, 1)
         
         self.assertEqual(l3.LOAD, 2)
         self.assertEqual(l3.HIT, 0)
         self.assertEqual(l3.MISS, 2)
-        self.assertEqual(l3.STORE, cacheline_size)
+        self.assertEqual(l3.STORE, 1)
         
         self.assertEqual(mem.LOAD, 2)
         self.assertEqual(mem.HIT, 2)
         self.assertEqual(mem.MISS, 0)
-        self.assertEqual(mem.STORE, cacheline_size)
+        self.assertEqual(mem.STORE, 1)
         
