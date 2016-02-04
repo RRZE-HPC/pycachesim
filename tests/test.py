@@ -114,10 +114,9 @@ class TestHighlevel(unittest.TestCase):
         
         mh.force_write_back()
         
-        # Why loads with -1 / -64, you ask? The cache is initialized with cl_id 0. Sorry :/
-        self.assertEqual(l1.LOAD, 20*1024*1024-64)
-        self.assertEqual(l2.LOAD, 20*1024*1024//64-1)
-        self.assertEqual(l3.LOAD, 20*1024*1024//64-1)
+        self.assertEqual(l1.LOAD, 20*1024*1024)
+        self.assertEqual(l2.LOAD, 20*1024*1024//64)
+        self.assertEqual(l3.LOAD, 20*1024*1024//64)
         self.assertEqual(l1.STORE, 20*1024*1024)
         self.assertEqual(l2.STORE, 20*1024*1024//64)
         self.assertEqual(l3.STORE, 20*1024*1024//64)

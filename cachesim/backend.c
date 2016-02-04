@@ -17,7 +17,10 @@ static PyMethodDef cachesim_methods[] = {
 
 typedef struct cache_entry {
     unsigned int cl_id;
-    int dirty;
+
+    // TODO Use binary flags instead?
+    int dirty; // if 0, content is in sync with main memory. if 1, it is not. used for write-back
+    int invalid; // denotes an entry which does not contain a valid cacheline. it is empty.
 } cache_entry;
 
 typedef struct Cache {
@@ -105,7 +108,8 @@ inline static int Cache__get_location(Cache* self, unsigned int cl_id, unsigned 
     // ways or full-associativity?
     
     for(int i=0; i<self->ways; i++) {
-        if(self->placement[set_id*self->ways+i].cl_id == cl_id) {
+        if(self->placement[set_id*self->ways+i].invalid == 0 &&
+           self->placement[set_id*self->ways+i].cl_id == cl_id) {
             return i;
         }
     }
@@ -152,6 +156,7 @@ static int Cache__load(Cache* self, unsigned int addr) {
                 }
                 self->placement[set_id*self->ways].cl_id = cl_id;
                 self->placement[set_id*self->ways].dirty = 0;
+                self->placement[set_id*self->ways].invalid = 0;
             }
             return 0;
         } 
@@ -209,10 +214,11 @@ static int Cache__load(Cache* self, unsigned int addr) {
     // Replace other cacheline according to replacement strategy (using placement order as state)
     self->placement[set_id*self->ways+replace_idx].cl_id = cl_id;
     self->placement[set_id*self->ways+replace_idx].dirty = 0;
+    self->placement[set_id*self->ways+replace_idx].invalid = 0;
     
     // write-back: check for dirty bit of replaced and inform next lower level of store
     if(self->write_policy_id == 0) { // "write-back write-allocate"
-        if(replace_entry.dirty == 1) {
+        if(replace_entry.invalid == 0 && replace_entry.dirty == 1) {
             if(self->store_to != NULL) {
                 Py_INCREF(self->store_to);
                 // TODO addrs vs cl_id is not nicely solved here
@@ -473,7 +479,8 @@ static PyObject* Cache_contains(Cache* self, PyObject *args, PyObject *kwds) {
     unsigned int set_id = Cache__get_set_id(self, cl_id);
 
     for(int i=0; i<self->ways; i++) {
-        if(self->placement[set_id*self->ways+i].cl_id == cl_id) {
+        if(self->placement[set_id*self->ways+i].invalid == 0 &&
+           self->placement[set_id*self->ways+i].cl_id == cl_id) {
             Py_RETURN_TRUE;
         }
     }
@@ -482,7 +489,7 @@ static PyObject* Cache_contains(Cache* self, PyObject *args, PyObject *kwds) {
 
 static PyObject* Cache_force_write_back(Cache* self) {
     for(int i=0; i<self->ways*self->sets; i++) {
-        if(self->placement[i].dirty == 1) {
+        if(self->placement[i].invalid == 0 && self->placement[i].dirty == 1) {
             if(self->store_to != NULL) {
                 // Found dirty line, initiate write-back:
                 Py_INCREF(self->store_to);
@@ -632,8 +639,7 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
 
     self->placement = PyMem_New(struct cache_entry, self->sets*self->ways);
     for(unsigned int i=0; i<self->sets*self->ways; i++) {
-        self->placement[i].cl_id = 0;
-        self->placement[i].dirty = 0;
+        self->placement[i].invalid = 1;
     }
 
     // TODO check if ways and cl_size are of power^2
