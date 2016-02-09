@@ -10,16 +10,18 @@ from cachesim import CacheSimulator, Cache, MainMemory
 
 # TODO Required Testcases:
 # * write-through
-# * weird trees with store_to and load _from
+# * weird trees with store_to and load_from
 # * victim caches (not yet implemented)
 
 
 class TestHighlevel(unittest.TestCase):
     def test_fill_nocl(self):
-        l3 = Cache("L3", 4, 8, 1, "LRU", "write-back write-allocate")
-        l2 = Cache("L2", 4, 4, 1, "LRU", "write-back write-allocate", store_to=l3, load_from=l3)
-        l1 = Cache("L1", 2, 4, 1, "LRU", "write-back write-allocate", store_to=l2, load_from=l2)
-        mem = MainMemory(l3)
+        mem = MainMemory()
+        l3 = Cache("L3", 4, 8, 1, "LRU")
+        mem.load_to(l3)
+        mem.store_from(l3)
+        l2 = Cache("L2", 4, 4, 1, "LRU", store_to=l3, load_from=l3)
+        l1 = Cache("L1", 2, 4, 1, "LRU", store_to=l2, load_from=l2)
         mh = CacheSimulator(l1, mem)
     
         mh.load(range(0, 32))
@@ -30,10 +32,12 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l3.cached, set(range(16,48)))
 
     def test_fill(self):
-        l3 = Cache("L3", 4, 8, 8, "LRU", "write-back write-allocate")
-        l2 = Cache("L2", 4, 4, 8, "LRU", "write-back write-allocate", store_to=l3, load_from=l3)
-        l1 = Cache("L1", 2, 4, 8, "LRU", "write-back write-allocate", store_to=l2, load_from=l2)
-        mem = MainMemory(l3)
+        mem = MainMemory()
+        l3 = Cache("L3", 4, 8, 8, "LRU")
+        mem.load_to(l3)
+        mem.store_from(l3)
+        l2 = Cache("L2", 4, 4, 8, "LRU", store_to=l3, load_from=l3)
+        l1 = Cache("L1", 2, 4, 8, "LRU", store_to=l2, load_from=l2)
         mh = CacheSimulator(l1, mem)
     
         mh.load(range(0, 512))
@@ -46,15 +50,20 @@ class TestHighlevel(unittest.TestCase):
     def _get_SandyEP_caches(self):
         # Cache hierarchy as found in a Sandy Brige EP:
         cacheline_size = 64
+        mem = MainMemory()
         l3 = Cache("L3", 20480, 16, cacheline_size,
-                   "LRU", "write-back write-allocate")  # 20MB 16-ways
+                   "LRU",
+                   write_back=True, write_allocate=True)  # 20MB 16-ways
+        mem.load_to(l3)
+        mem.store_from(l3)
         l2 = Cache("L2", 512, 8, cacheline_size,
-                   "LRU", "write-back write-allocate",
+                   "LRU",
+                   write_back=True, write_allocate=True,
                    store_to=l3, load_from=l3)  # 256kB 8-ways
         l1 = Cache("L1", 64, 8, cacheline_size,
-                   "LRU", "write-back write-allocate",
+                   "LRU",
+                   write_back=True, write_allocate=True,
                    store_to=l2, load_from=l2)  # 32kB 8-ways
-        mem = MainMemory(l3)
         mh = CacheSimulator(l1, mem)
         return mh, l1, l2, l3, mem, cacheline_size 
     
@@ -347,4 +356,76 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(mem.HIT, 2)
         self.assertEqual(mem.MISS, 0)
         self.assertEqual(mem.STORE, 1)
+    
+    def _build_Bulldozer_caches(self):
+        cacheline_size = 64
+        
+        mem = MainMemory()
+        l3 = Cache(name="L3",
+                   sets=2048, ways=64, cl_size=cacheline_size,  # 4MB
+                   replacement_policy="LRU",
+                   write_back=True, write_allocate=True,
+                   store_to=None, load_from=None, victims_to=None,
+                   swap_on_load=False)  # This is a victim cache, so exclusiveness should be obvious
+        mem.store_from(l3)
+        l2 = Cache(name="L2",
+                   sets=2048, ways=16, cl_size=cacheline_size,  # 2048kB 
+                   replacement_policy="LRU",
+                   write_back=True, write_allocate=True,
+                   store_to=l3, load_from=None, victims_to=l3,
+                   swap_on_load=False) # L2-L1 is inclusive (unlike with AMD Istanbul)
+        mem.load_to(l2)
+        wcc = Cache(name="WCC"
+                   sets=1, ways=64, cl_size=cacheline_size,  # 4KB
+                   replacement_policy="LRU",
+                   write_back=True, write_allocate=False, # this policy only makes sens with WCC
+                   store_to=l2, load_from=None, victims_to=None,
+                   swap_on_load=False)
+        l1 = Cache(name="L1",
+                   sets=64, ways=4, cl_size=cacheline_size,  # 16kB
+                   replacement_policy="LRU",
+                   write_back=False, write_allocate=False,
+                   store_to=wcc, load_from=l2, victims_to=None,
+                   write_combining=True,
+                   swap_on_load=False)  # inclusive/exclusive does not matter in first-level
+        cs = CacheSimulator(first_level=l1,
+                            main_memory=mem)
+        
+        return cs, l1, wcc, l2, l3, mem, cacheline_size
+    
+    def test_victim_write_back_cache(self):
+        cs, l1, wcc, l2, l3, mem, cacheline_size = self._build_Bulldozer_caches()
+        
+        # STREAM copy 10MB in cacheline chunks
+        iteration_size = 10#1024*1024*10//cacheline_size
+        offset = iteration_size*cacheline_size
+        for i in range(0, iteration_size*cacheline_size, cacheline_size):
+            cs.load(i, cacheline_size)
+            cs.store(offset+i, cacheline_size)
+        
+        cs.force_write_back()
+        
+        from pprint import pprint
+        pprint(list(cs.stats()))
+        
+        self.assertEqual(l1.LOAD, iteration_size*cacheline_size)
+        self.assertEqual(l1.HIT, iteration_size*(cacheline_size-1))
+        self.assertEqual(l1.MISS, iteration_size)
+        self.assertEqual(l1.STORE, iteration_size*cacheline_size)
+        
+        self.assertEqual(l2.LOAD, iteration_size*2)
+        self.assertEqual(l2.HIT, 0)
+        self.assertEqual(l2.MISS, iteration_size*2)
+        self.assertEqual(l2.STORE, iteration_size)
+        
+        self.assertEqual(l3.LOAD, iteration_size*2)
+        self.assertEqual(l3.HIT, 0)
+        self.assertEqual(l3.MISS, iteration_size*2)
+        self.assertEqual(l3.STORE, iteration_size)
+        
+        self.assertEqual(mem.LOAD, iteration_size*2)
+        self.assertEqual(mem.HIT, iteration_size*2)
+        self.assertEqual(mem.MISS, 0)
+        self.assertEqual(mem.STORE, iteration_size)
+        
         

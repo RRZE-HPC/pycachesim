@@ -46,8 +46,6 @@ class CacheSimulator(object):
         for l in self.levels(with_mem=False):  # iterating to last level
             self.last_level = l
         
-        assert main_memory.last_level == self.last_level, \
-            "Main memory's last level reference needs to coincide with the last cache level."
         self.main_memory = main_memory
         
     def reset_stats(self):
@@ -109,7 +107,10 @@ class CacheSimulator(object):
         p = self.first_level
         while p is not None:
             yield p
-            # FIXME victim caches will be victims of ignorance (unreachable via .load_from)
+            # FIXME bad hack to include victim caches, need a more general solution, probably 
+            # involving recursive tree walking
+            if p.victims_to is not None and p.victims_to != p.load_from:
+                yield p.victims_to
             p = p.load_from
         
         if with_mem:
@@ -143,11 +144,11 @@ class CacheSimulator(object):
 
 class Cache(object):
     replacement_policy_enum = {"FIFO": 0, "LRU": 1, "MRU": 2, "RR": 3}
-    write_policy_enum = {"write-back write-allocate": 0, "write-through non-write-allocate": 1}
     
     def __init__(self, name, sets, ways, cl_size,
                  replacement_policy="LRU",
-                 write_policy="write-through write-allocate",
+                 write_back=True,
+                 write_allocate=True,
                  load_from=None, store_to=None, victims_to=None,
                  swap_on_load=False):
         '''Creates one cache level out of given configuration.
@@ -164,11 +165,11 @@ class Cache(object):
         Instantization has to happen from last level cache to first level cache, since each
         subsequent level requires a reference of the other level.
         '''
-        assert store_to is None or isinstance(store_to, Cache), \
-            "store_to needs to be None or a Cache object."
         assert load_from is None or isinstance(load_from, Cache), \
             "load_from needs to be None or a Cache object."
-        assert victims_to is None or isinstance(load_from, Cache), \
+        assert store_to is None or isinstance(store_to, Cache), \
+            "store_to needs to be None or a Cache object."
+        assert victims_to is None or isinstance(victims_to, Cache), \
             "victims_to needs to be None or a Cache object."
         assert is_power2(cl_size), \
             "cl_size needs to be a power of two."
@@ -180,25 +181,27 @@ class Cache(object):
         assert replacement_policy in self.replacement_policy_enum, \
             "Unsupported replacement strategy, we only support: "+ \
             ', '.join(self.replacement_policy_enum)
-        assert write_policy in self.write_policy_enum, \
-            "Unsupported write policy, we only support: "+ \
-            ', '.join(self.write_policy_enum)
+        assert (write_through, write_allocate) in [(True, True), (False, False), (True, False)], \
+            "Unsupported write policy, we only support write-through and non-write-allocate, " \
+            "write-back and write-allocate, and write-back and non-write-allocate."
         # TODO check that ways only increase from higher  to lower _exclusive_ cache
         # other wise swap won't be a valid procedure to ensure exclusiveness
+        # TODO check that cl_size has to be the same with exclusive an victim caches
         
         self.name = name
         self.replacement_policy = replacement_policy
         self.replacement_policy_id = self.replacement_policy_enum[replacement_policy]
         self.write_policy = write_policy
         self.write_policy_id = self.write_policy_enum[write_policy]
-        self.store_to = store_to
         self.load_from = load_from
+        self.store_to = store_to
         self.victims_to = victims_to
         self.swap_on_load = swap_on_load
         
         self.backend = backend.Cache(
             name, sets, ways, cl_size,
-            self.replacement_policy_id, self.write_policy_id,
+            self.replacement_policy_id,
+            self.write_back, self.write_allocate,
             self._get_backend(load_from), self._get_backend(store_to),
             self._get_backend(victims_to),
             swap_on_load)
@@ -242,23 +245,32 @@ class Cache(object):
 
 
 class MainMemory(object):
-    def __init__(self, last_level):
-        '''Creates one cache level out of given configuration.
-    
-        :param last_level: last level cache
+    def __init__(self, last_level_load=None, last_level_store=None):
+        '''Creates one cache level out of given configuration.'''
+        if last_level_load is not None:
+            self.load_to(last_level_load)
         
-        '''
-        assert isinstance(last_level, Cache), \
-            "last_level needs to be a Cache object."
-        assert last_level.load_from is None, \
-            "last_level must be a last level cache (last_level.load_from is None)."
-        
-        self.last_level = last_level
+        if last_level_store is not None:
+            self.store_from(last_level_store)
     
     def reset_stats(self):
         # since all stats in main memory are derived from the last level cache, there is nothing to 
         # reset
         pass
+    
+    def load_to(self, last_level_load):
+        assert isinstance(last_level_load, Cache), \
+            "last_level needs to be a Cache object."
+        assert last_level_load.load_from is None, \
+            "last_level_load must be a last level cache (.load_from is None)."
+        self.last_level_load = last_level_load
+    
+    def store_from(self, last_level_store):
+        assert isinstance(last_level_store, Cache), \
+            "last_level needs to be a Cache object."
+        assert last_level_store.store_to is None, \
+            "last_level_store must be a last level cache (.store_to is None)."
+        self.last_level_store = last_level_store
     
     def __getattr__(self, key):
         try:
@@ -268,10 +280,11 @@ class MainMemory(object):
     
     @property
     def stats(self):
-        return {'LOAD': self.last_level.MISS,
-                'STORE': self.last_level.STORE,
-                'HIT': self.last_level.MISS,
+        return {'LOAD': self.last_level_load.MISS,
+                'STORE': self.last_level_store.STORE,
+                'HIT': self.last_level_load.MISS,
                 'MISS': 0}
     
     def __repr__(self):
-        return 'MainMemory(last_level={!r})'.format(self.last_level)
+        return 'MainMemory(last_level_load={!r}, last_level_store={!r})'.format(
+            self.last_level_load, self.last_level_store)

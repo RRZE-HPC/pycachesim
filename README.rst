@@ -13,6 +13,7 @@ Current features:
  * LRU, MRU, RR and FIFO policies supported
  * Support for cache associativity
  * Only write-allocate with write-back support
+ * Write-combining (useful with write-through first level cache)
  * Speed (core is implemented in C)
  * Python 2.7+ and 3.4+ support, with no other dependencies
 
@@ -26,6 +27,8 @@ Planned features:
  * (uncertain) instruction cache
  * Optional classification into compulsory/capacity and conflict misses (by simulating other cache configurations in parallel)
  * (uncertain) multi-core support
+ * Remove cl_size growth requirement (NVIDIA Kepler's L1 has 128B cl_size and L2 with 32B)
+ * Add sub-blocking support
  
 License
 -------
@@ -98,7 +101,7 @@ callgrind_         x              x                              x             x
 SMPcache_                         x                              x             x                 x        x       ?                                                                Windows GUI       no, free for education und research        
 CMPsim_                           x                              x             x       x         x        x                    x             ?             ?             x         ?                 no, source not public         
 CASPER_            x              x             x                x             x       x         x        x       x            x                                         x         perl, c           no, source not public        
-pycachesim                        x                              x             x       x         x        x                    x           planned       planned                   python            yes, AGPLv3          
+pycachesim                        x                              x             x       x         x        x                    x           planned         x                       python            yes, AGPLv3          
 =========== ================= =========== =============== ================= ======== ======== ========= ======= ======== ============== ============== =========== =============== ================= ===================================
 
 .. _gem5: http://gem5.org/Main_Page
