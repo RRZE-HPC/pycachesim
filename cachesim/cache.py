@@ -101,7 +101,7 @@ class CacheSimulator(object):
     def stats(self):
         '''Collects all stats from all cache levels.'''
         for c in self.levels():
-            yield c.stats
+            yield c.stats()
 
     def levels(self, with_mem=True):
         p = self.first_level
@@ -111,6 +111,8 @@ class CacheSimulator(object):
             # involving recursive tree walking
             if p.victims_to is not None and p.victims_to != p.load_from:
                 yield p.victims_to
+            if p.store_to is not None and p.store_to != p.load_from and p.store_to != p.victims_to:
+                yield p.store_to
             p = p.load_from
         
         if with_mem:
@@ -149,6 +151,8 @@ class Cache(object):
                  replacement_policy="LRU",
                  write_back=True,
                  write_allocate=True,
+                 write_combining=False,
+                 subblock_size=None,
                  load_from=None, store_to=None, victims_to=None,
                  swap_on_load=False):
         '''Creates one cache level out of given configuration.
@@ -181,9 +185,15 @@ class Cache(object):
         assert replacement_policy in self.replacement_policy_enum, \
             "Unsupported replacement strategy, we only support: "+ \
             ', '.join(self.replacement_policy_enum)
-        assert (write_through, write_allocate) in [(True, True), (False, False), (True, False)], \
+        assert (write_back, write_allocate) in [(False, False), (True, True), (True, False)], \
             "Unsupported write policy, we only support write-through and non-write-allocate, " \
             "write-back and write-allocate, and write-back and non-write-allocate."
+        assert write_combining and write_back and not write_allocate or \
+                not (write_back and not write_allocate), \
+            "Write combining may only be used in a cache with write-back and non-write-allocate " \
+            "and vice-versa."
+        assert subblock_size is None or cl_size % subblock_size == 0, \
+            "subblock_size needs to be a devisor of cl_size or None."
         # TODO check that ways only increase from higher  to lower _exclusive_ cache
         # other wise swap won't be a valid procedure to ensure exclusiveness
         # TODO check that cl_size has to be the same with exclusive an victim caches
@@ -191,20 +201,22 @@ class Cache(object):
         self.name = name
         self.replacement_policy = replacement_policy
         self.replacement_policy_id = self.replacement_policy_enum[replacement_policy]
-        self.write_policy = write_policy
-        self.write_policy_id = self.write_policy_enum[write_policy]
         self.load_from = load_from
         self.store_to = store_to
         self.victims_to = victims_to
         self.swap_on_load = swap_on_load
         
+        if subblock_size is None:
+            subblock_size = cl_size
+            
         self.backend = backend.Cache(
-            name, sets, ways, cl_size,
-            self.replacement_policy_id,
-            self.write_back, self.write_allocate,
-            self._get_backend(load_from), self._get_backend(store_to),
-            self._get_backend(victims_to),
-            swap_on_load)
+            name=name, sets=sets, ways=ways, cl_size=cl_size,
+            replacement_policy_id=self.replacement_policy_id,
+            write_back=write_back, write_allocate=write_allocate,
+            write_combining=write_combining, subblock_size=subblock_size,
+            load_from=self._get_backend(load_from), store_to=self._get_backend(store_to),
+            victims_to=self._get_backend(victims_to),
+            swap_on_load=swap_on_load)
     
     def _get_backend(self, cache):
         '''Returns backend of *cache* unless *cache* is None, then None is returned.'''
@@ -220,33 +232,38 @@ class Cache(object):
         '''Returns last address belonging to the same cacheline as *addr*'''
         return self.get_cl_start(addr) + self.backend.cl_size - 1
     
-    def reset_stats(self):
-        self.backend.HIT = 0
-        self.backend.MISS = 0
-        self.backend.LOAD = 0
-        self.backend.STORE = 0
-    
     def __getattr__(self, key):
-        return getattr(self.backend, key)
+        if hasattr(self, "backend"):
+            return getattr(self.backend, key)
+        else:
+            raise AttributeError("'{}' object has no attribute '{}'".format(self.__class__, key))
     
-    @property
     def stats(self):
-        return {'LOAD': self.backend.LOAD,
-                'STORE': self.backend.STORE,
-                'HIT': self.backend.HIT,
-                'MISS': self.backend.MISS}
+        return {'name': self.name,
+                'LOAD_count': self.backend.LOAD_count,
+                'LOAD_byte': self.backend.LOAD_byte,
+                'STORE_count': self.backend.STORE_count,
+                'STORE_byte': self.backend.STORE_byte,
+                'HIT_count': self.backend.HIT_count,
+                'HIT_byte': self.backend.HIT_byte,
+                'MISS_count': self.backend.MISS_count,
+                'MISS_byte': self.backend.MISS_byte}
     
     def size(self):
         return self.sets*self.ways*self.cl_size
     
     def __repr__(self):
-        return 'Cache(sets={!r}, ways={!r}, cl_size={!r}, replacement_policy={!r}, parent={!r})'.format(
-            self.sets, self.ways, self.cl_size, self.replacement_policy, self.parent)
+        return 'Cache(name={!r}, sets={!r}, ways={!r}, cl_size={!r}, replacement_policy={!r}, write_back={!r}, write_allocate={!r}, write_combining={!r}, load_from={!r}, store_to={!r}, victims_to={!r}, swap_on_load={!r}))'.format(
+            self.name, self.sets, self.ways, self.cl_size, self.replacement_policy, self.write_back,
+            self.write_allocate, self.write_combining, self.load_from, self.store_to,
+            self.victims_to, self.swap_on_load)
 
 
 class MainMemory(object):
-    def __init__(self, last_level_load=None, last_level_store=None):
+    def __init__(self, name=None, last_level_load=None, last_level_store=None):
         '''Creates one cache level out of given configuration.'''
+        self.name = "MEM" if name is None else name
+        
         if last_level_load is not None:
             self.load_to(last_level_load)
         
@@ -274,16 +291,20 @@ class MainMemory(object):
     
     def __getattr__(self, key):
         try:
-            return self.stats[key]
+            return self.stats()[key]
         except KeyError:
             raise AttributeError
     
-    @property
     def stats(self):
-        return {'LOAD': self.last_level_load.MISS,
-                'STORE': self.last_level_store.STORE,
-                'HIT': self.last_level_load.MISS,
-                'MISS': 0}
+        return {'name': self.name,
+                'LOAD_count': self.last_level_load.MISS_count,
+                'LOAD_byte': self.last_level_load.MISS_byte,
+                'STORE_count': self.last_level_store.STORE_count,
+                'STORE_byte': self.last_level_store.STORE_byte,
+                'HIT_count': self.last_level_load.MISS_count,
+                'HIT_byte': self.last_level_load.MISS_byte,
+                'MISS_count': 0,
+                'MISS_byte': 0}
     
     def __repr__(self):
         return 'MainMemory(last_level_load={!r}, last_level_store={!r})'.format(
