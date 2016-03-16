@@ -103,6 +103,16 @@ class CacheSimulator(object):
         for c in self.levels():
             yield c.stats()
 
+    def print_stats(self, header=True, file=sys.stdout):
+        '''Pretty print stats table'''
+        if header:
+            print("CACHE ------HIT------ ------MISS----- ------LOAD----- -----STORE-----",
+                  file=file)
+        for s in self.stats():
+            print("{name:<5} {HIT_count:>5} ({HIT_byte:>6}B) {MISS_count:>5} ({MISS_byte:>6}B) "
+                  "{LOAD_count:>5} ({LOAD_byte:>6}B) {STORE_count:>5} "
+                  "({STORE_byte:>6}B)".format(**s), file=file)
+
     def levels(self, with_mem=True):
         p = self.first_level
         while p is not None:
