@@ -358,12 +358,12 @@ static void Cache__store(Cache* self, addr_range range) {
     self->STORE.count++;
     self->STORE.byte += range.length;
     // Handle range:
-    unsigned int last_cl_id = Cache__get_cacheline_id(self, range.addr+range.length);
+    unsigned int last_cl_id = Cache__get_cacheline_id(self, range.addr+range.length-1);
     for(unsigned int cl_id=Cache__get_cacheline_id(self, range.addr); cl_id<=last_cl_id; cl_id++) {
         unsigned int set_id = Cache__get_set_id(self, cl_id);
         int location = Cache__get_location(self, cl_id, set_id);
         // if(self->subblock_bitfield != NULL)
-        //     PySys_WriteStdout("%p STORE=%i addr=%i length=%i cl_id=%i sets=%i location=%i\n", self, self->LOAD.count, range.addr, range.length, cl_id, self->sets, location);
+        //PySys_WriteStdout("%s STORE=%i addr=%i length=%i cl_id=%i sets=%i location=%i\n", self->name, self->LOAD.count, range.addr, range.length, cl_id, self->sets, location);
         
         if(self->write_allocate == 1) {
             // Write-allocate policy
@@ -375,8 +375,6 @@ static void Cache__store(Cache* self, addr_range range) {
                 // TODO makes no sens if first level is write-through (all byte requests hit L2)
                 location = Cache__load(self, Cache__get_range_from_cl_id(self, cl_id));
             }
-            
-            // TODO handle write-allocate in lower levels without messing up the statistics
         } else if(self->write_combining == 1 && location == -1) {
             // In write_combining case, write_allocate musst be off
             // If the cacheline is not yet present, we inject a cachelien without loading it
@@ -655,6 +653,7 @@ static PyObject* Cache_force_write_back(Cache* self) {
         if(self->placement[i].invalid == 0 && self->placement[i].dirty == 1) {
             if(self->store_to != NULL) {
                 // Found dirty line, initiate write-back:
+                //PySys_WriteStdout("%s dirty_line cl_id=%i\n", self->name, self->placement[i].cl_id);
                 Py_INCREF(self->store_to);
                 Cache__store(
                     (Cache*)self->store_to,

@@ -89,55 +89,36 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l3.STORE_count, 0)
         self.assertEqual(l2.LOAD_count, 0)
         self.assertEqual(l3.LOAD_count, 0)
-        
-        return
-        
-        mh.reset_stats()
-        mh.load(range(0, 256*1024))
-        self.assertEqual(l1.LOAD_count, 256*1024)
-        self.assertEqual(l1.LOAD_byte, 256*1024)
-        self.assertEqual(l1.HIT_count, 32*1024+63*(256-32)*1024//64)
-        self.assertEqual(l1.HIT_byte, 32*1024+63*(256-32)*1024//64)
-        self.assertEqual(l1.MISS_count, (256-32)*1024//64)
-        self.assertEqual(l1.MISS_byte, (256-32)*1024//64)
-        self.assertEqual(l2.LOAD_count, (256-32)*1024//64)
-        self.assertEqual(l2.LOAD_byte, (256-32)*1024//64)
-        
-        mh.load(range(0, 20*1024*1024))
-        mh.reset_stats()
-        mh.load(range(0, 20*1024*1024))
-        self.assertEqual(l1.HIT+l2.HIT+l3.HIT_count, 20*1024*1024)
-        self.assertEqual(l1.HIT_byte+l2.HIT_byte+l3.HIT_byte, 20*1024*1024)
-        self.assertEqual(l3.MISS_count, 0)
 
-    # def test_large_store(self):
-    #     # Cache hierarchy as found in a Sandy Brige EP:
-    #     l3 = Cache(20480, 16, 64, "LRU")  # 20MB 16-ways
-    #     l2 = Cache(512, 8, 64, "LRU", parent=l3)  # 256kB 8-ways
-    #     l1 = Cache(64, 8, 64, "LRU", parent=l2)  # 32kB 8-ways
-    #     mh = CacheSimulator(l1, write_allocate=False)
-    #     mh.store(range(0, 20*1024*1024))
-    #
-    #     self.assertEqual(l1.LOAD_count, 0)
-    #     self.assertEqual(l2.LOAD_count, 0)
-    #     self.assertEqual(l3.LOAD_count, 0)
-    #     self.assertEqual(l1.STORE_count, 20*1024*1024)
-    #     self.assertEqual(l2.STORE_count, 20*1024*1024)
-    #     self.assertEqual(l3.STORE_count, 20*1024*1024)
-
-    def test_large_store_write_allocate(self):
+    def test_large_continious_store_write_allocate(self):
         mh, l1, l2, l3, mem, cacheline_size = self._get_SandyEP_caches()
-
-        mh.store(range(0, 20*1024*1024))
+        
+        length = 20*1024*1024
+        mh.store(0,length)
         
         mh.force_write_back()
         
-        self.assertEqual(l1.LOAD_count, 20*1024*1024)
-        self.assertEqual(l2.LOAD_count, 20*1024*1024//64)
-        self.assertEqual(l3.LOAD_count, 20*1024*1024//64)
-        self.assertEqual(l1.STORE_count, 20*1024*1024)
-        self.assertEqual(l2.STORE_count, 20*1024*1024//64)
-        self.assertEqual(l3.STORE_count, 20*1024*1024//64)
+        self.assertEqual(l1.LOAD_count, length//64)
+        self.assertEqual(l2.LOAD_count, length//64)
+        self.assertEqual(l3.LOAD_count, length//64)
+        self.assertEqual(l1.STORE_count, 1)
+        self.assertEqual(l2.STORE_count, length//64)
+        self.assertEqual(l3.STORE_count, length//64)
+    
+    def test_large_store_write_allocate(self):
+        mh, l1, l2, l3, mem, cacheline_size = self._get_SandyEP_caches()
+        
+        length = 20*1024*1024
+        mh.store(range(0,length))
+        
+        mh.force_write_back()
+        
+        self.assertEqual(l1.LOAD_count, length//64)
+        self.assertEqual(l2.LOAD_count, length//64)
+        self.assertEqual(l3.LOAD_count, length//64)
+        self.assertEqual(l1.STORE_count, length)
+        self.assertEqual(l2.STORE_count, length//64)
+        self.assertEqual(l3.STORE_count, length//64)
     
     def test_large_fill_iter(self):
         mh, l1, l2, l3, mem, cacheline_size = self._get_SandyEP_caches()
