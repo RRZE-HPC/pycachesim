@@ -339,6 +339,8 @@ static int Cache__load(Cache* self, addr_range range) {
             // if(self->ways == 16 && set_id == 0 && self->MISS.count == 0) {
             //     PySys_WriteStdout("HIT self->LOAD=%i addr=%i cl_id=%i set_id=%i\n", self->LOAD.count, range.addr, cl_id, set_id);
             // }
+            
+            cache_entry entry = self->placement[set_id*self->ways+location];
         
             if(self->replacement_policy_id == 0 || self->replacement_policy_id == 3) {
                 // FIFO: nothing to do
@@ -352,10 +354,25 @@ static int Cache__load(Cache* self, addr_range range) {
                     for(int j=location; j>0; j--) {
                         self->placement[set_id*self->ways+j] =
                             self->placement[set_id*self->ways+j-1];
+                        
+                        // Reorder bitfild in accordance to queue
+                        if(self->write_combining == 1) {
+                            for(int i=0; i<self->subblock_bits; i++) {
+                                if(BITTEST(self->subblock_bitfield,
+                                           set_id*self->ways*self->subblock_bits +
+                                           (j-1)*self->subblock_bits + i)) {
+                                    BITSET(self->subblock_bitfield,
+                                           set_id*self->ways*self->subblock_bits +
+                                           j*self->subblock_bits + i);
+                                } else {
+                                    BITCLEAR(self->subblock_bitfield,
+                                             set_id*self->ways*self->subblock_bits +
+                                             j*self->subblock_bits + i);
+                                }
+                            }
+                        }
                     }
-                    self->placement[set_id*self->ways].cl_id = cl_id;
-                    self->placement[set_id*self->ways].dirty = 0;
-                    self->placement[set_id*self->ways].invalid = 0;
+                    self->placement[set_id*self->ways] = entry;
                 }
                 placement_idx = 0;
                 continue;
@@ -446,12 +463,14 @@ static void Cache__store(Cache* self, addr_range range, int non_temporal) {
                        set_id*self->ways*self->subblock_bits + location*self->subblock_bits + i);
             }
         }
+        // PySys_WriteStdout("%s STORE=%i NT=%i addr=%i length=%i cl_id=%i sets=%i set_id=%i ways=%i location=%i\n", self->name, self->LOAD.count, non_temporal, range.addr, range.length, cl_id, self->sets, set_id, self->ways, location);
         
         if(self->write_back == 1 && location != -1) {
             // Write-back policy and cache-line in cache
             
             // Mark cacheline as dirty for later write-back during eviction
             self->placement[set_id*self->ways+location].dirty = 1;
+            // PySys_WriteStdout("DIRTY\n");
         } else {
             // Write-through policy or cache-line not in cache
             
@@ -697,7 +716,9 @@ static PyObject* Cache_contains(Cache* self, PyObject *args, PyObject *kwds) {
 }
 
 static PyObject* Cache_force_write_back(Cache* self) {
+    // PySys_WriteStdout("%s force_write_back\n", self->name);
     for(int i=0; i<self->ways*self->sets; i++) {
+        // PySys_WriteStdout("%i inv=%i dirty=%i\n", i, self->placement[i].invalid, self->placement[i].dirty);
         if(self->placement[i].invalid == 0 && self->placement[i].dirty == 1) {
             if(self->store_to != NULL) {
                 // Found dirty line, initiate write-back:
@@ -901,6 +922,7 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
     self->placement = PyMem_New(struct cache_entry, self->sets*self->ways);
     for(unsigned int i=0; i<self->sets*self->ways; i++) {
         self->placement[i].invalid = 1;
+        self->placement[i].dirty = 0;
     }
 
     // Check if ways and cl_size are of power^2

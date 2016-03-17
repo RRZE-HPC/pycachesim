@@ -274,9 +274,13 @@ class MainMemory(object):
         
         if last_level_load is not None:
             self.load_to(last_level_load)
+        else:
+            self.last_level_load = None
         
         if last_level_store is not None:
             self.store_from(last_level_store)
+        else:
+            self.last_level_store = None
     
     def reset_stats(self):
         # since all stats in main memory are derived from the last level cache, there is nothing to 
