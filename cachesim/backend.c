@@ -198,7 +198,7 @@ inline static int Cache__get_location(Cache* self, unsigned int cl_id, unsigned 
     return -1; // Not found
 }
 
-static void Cache__store(Cache* self, addr_range range);
+static void Cache__store(Cache* self, addr_range range, int non_temporal);
 
 static int Cache__inject(Cache* self, cache_entry* entry) {
     /*
@@ -209,9 +209,7 @@ static int Cache__inject(Cache* self, cache_entry* entry) {
      - handle write-back on replacement
     */
     unsigned int set_id = Cache__get_set_id(self, entry->cl_id);
-    
-    // TODO handle bitfield with write-combining buffers
-    
+
     // Get cacheline id to be replaced according to replacement strategy
     int replace_idx;
     cache_entry replace_entry;
@@ -225,6 +223,20 @@ static int Cache__inject(Cache* self, cache_entry* entry) {
         // Reorder queue
         for(int i=self->ways-1; i>0; i--) {
             self->placement[set_id*self->ways+i] = self->placement[set_id*self->ways+i-1];
+            
+            // Reorder bitfild in accordance to queue
+            if(self->write_combining == 1) {
+                for(int j=0; j<self->subblock_bits; j++) {
+                    if(BITTEST(self->subblock_bitfield, set_id*self->ways*self->subblock_bits +
+                               (i-1)*self->subblock_bits + j)) {
+                        BITSET(self->subblock_bitfield, set_id*self->ways*self->subblock_bits +
+                               i*self->subblock_bits + j);
+                    } else {
+                        BITCLEAR(self->subblock_bitfield, set_id*self->ways*self->subblock_bits +
+                                 i*self->subblock_bits + j);
+                    }
+                }
+            }
         }
     } else if(self->replacement_policy_id == 2) {
         // MRU: replace first of queue
@@ -234,6 +246,20 @@ static int Cache__inject(Cache* self, cache_entry* entry) {
         // Reorder queue
         for(int i=0; i>self->ways-1; i++) {
             self->placement[set_id*self->ways+i] = self->placement[set_id*self->ways+i+1];
+            
+            // Reorder bitfild in accordance to queue
+            if(self->write_combining == 1) {
+                for(int j=0; j<self->subblock_bits; j++) {
+                    if(BITTEST(self->subblock_bitfield, set_id*self->ways*self->subblock_bits +
+                               (i+1)*self->subblock_bits + j)) {
+                        BITSET(self->subblock_bitfield, set_id*self->ways*self->subblock_bits +
+                               i*self->subblock_bits + j);
+                    } else {
+                        BITCLEAR(self->subblock_bitfield, set_id*self->ways*self->subblock_bits +
+                                 i*self->subblock_bits + j);
+                    }
+                }
+            }
         }
     } else { // if(self->replacement_policy_id == 3) {
         // RR: replace random element
@@ -248,10 +274,31 @@ static int Cache__inject(Cache* self, cache_entry* entry) {
     if(self->write_back == 1) {
         if(replace_entry.invalid == 0 && replace_entry.dirty == 1) {
             if(self->store_to != NULL) {
+                int non_temporal = 0; // default for non write-combining caches
+
+                if(self->write_combining == 1) {
+                    // Check if non-temporal store may be used or write-allocate is necessary
+                    non_temporal = 1;
+                    for(int i=0; i<self->subblock_bits; i++) {
+                        if(BITTEST(self->subblock_bitfield,
+                                set_id*self->ways*self->subblock_bits +
+                                replace_idx*self->subblock_bits + i)) {
+                            // incomplete cacheline, thus write-allocate is necessary
+                            non_temporal = 0;
+                        }
+                        // Clear bits for future use
+                        BITCLEAR(self->subblock_bitfield,
+                                set_id*self->ways*self->subblock_bits +
+                                replace_idx*self->subblock_bits + i);
+                    }
+                }
+
                 Py_INCREF(self->store_to);
                 // TODO addrs vs cl_id is not nicely solved here
                 Cache__store(
-                    (Cache*)self->store_to, Cache__get_range_from_cl_id(self, replace_entry.cl_id));
+                    (Cache*)self->store_to,
+                    Cache__get_range_from_cl_id(self, replace_entry.cl_id),
+                    non_temporal);
                 Py_DECREF(self->store_to);
             } // else last-level-cache
         }
@@ -279,7 +326,7 @@ static int Cache__load(Cache* self, addr_range range) {
     for(unsigned int cl_id=Cache__get_cacheline_id(self, range.addr); cl_id<=last_cl_id; cl_id++) {
         unsigned int set_id = Cache__get_set_id(self, cl_id);
         //if(self->ways == 8) { //&& self->LOAD.count < 200) {
-        //PySys_WriteStdout("LOAD=%i addr=%i length=%i cl_id=%i set_id=%i\n", self->LOAD.count, range.addr, range.length, cl_id, set_id);
+        // PySys_WriteStdout("%s LOAD=%i addr=%i length=%i cl_id=%i set_id=%i\n", self->name, self->LOAD.count, range.addr, range.length, cl_id, set_id);
         //}
         
         // Check if cl_id is already cached
@@ -354,7 +401,7 @@ static int Cache__load(Cache* self, addr_range range) {
     return placement_idx;
 }
 
-static void Cache__store(Cache* self, addr_range range) {
+static void Cache__store(Cache* self, addr_range range, int non_temporal) {
     self->STORE.count++;
     self->STORE.byte += range.length;
     // Handle range:
@@ -363,9 +410,9 @@ static void Cache__store(Cache* self, addr_range range) {
         unsigned int set_id = Cache__get_set_id(self, cl_id);
         int location = Cache__get_location(self, cl_id, set_id);
         // if(self->subblock_bitfield != NULL)
-        //PySys_WriteStdout("%s STORE=%i addr=%i length=%i cl_id=%i sets=%i location=%i\n", self->name, self->LOAD.count, range.addr, range.length, cl_id, self->sets, location);
+        // PySys_WriteStdout("%s STORE=%i NT=%i addr=%i length=%i cl_id=%i sets=%i location=%i\n", self->name, self->LOAD.count, non_temporal, range.addr, range.length, cl_id, self->sets, location);
         
-        if(self->write_allocate == 1) {
+        if(self->write_allocate == 1 && non_temporal == 0) {
             // Write-allocate policy
             
             // Make sure line is loaded into cache (this will produce HITs and MISSes):
@@ -375,8 +422,8 @@ static void Cache__store(Cache* self, addr_range range) {
                 // TODO makes no sens if first level is write-through (all byte requests hit L2)
                 location = Cache__load(self, Cache__get_range_from_cl_id(self, cl_id));
             }
-        } else if(self->write_combining == 1 && location == -1) {
-            // In write_combining case, write_allocate musst be off
+        } else if(location == -1 && self->write_back == 1) {
+            // In non-temporal store case, write-combining or write-through:
             // If the cacheline is not yet present, we inject a cachelien without loading it
             cache_entry entry;
             entry.cl_id = cl_id;
@@ -391,10 +438,10 @@ static void Cache__store(Cache* self, addr_range range) {
             // Extract local range
             int cl_start = Cache__get_addr_from_cl_id(self, cl_id);
             int start = range.addr > cl_start ? range.addr : cl_start;
-            int end = range.addr+range.length < cl_start+self->cl_size ? 
-                range.addr+range.length : cl_start+self->cl_size;
-            
-            for(int i=0; i<end-start; i++) {
+            int end = range.addr+range.length < cl_start+self->cl_size ?
+                      range.addr+range.length : cl_start+self->cl_size;
+            // PySys_WriteStdout("cl_start=%i start=%i end=%i\n", cl_start, start, end);
+            for(int i=start-cl_start; i<end-cl_start; i++) {
                 BITSET(self->subblock_bitfield,
                        set_id*self->ways*self->subblock_bits + location*self->subblock_bits + i);
             }
@@ -413,16 +460,17 @@ static void Cache__store(Cache* self, addr_range range) {
             if(self->store_to != NULL) {
                 Py_INCREF(self->store_to);
                 Cache__store((Cache*)(self->store_to), 
-                             Cache__get_range_from_cl_id_and_range(self, cl_id, range));
+                             Cache__get_range_from_cl_id_and_range(self, cl_id, range),
+                             non_temporal);
                 Py_DECREF(self->store_to);
             } // else last-level-cache
         }
     }
     
-    // print bitfield
+    //print bitfield
     // if(self->subblock_bitfield != NULL) {
     //     for(int k=0; k<self->sets; k++) {
-    //         for(int j=0; j<self->ways; j++) {
+    //        for(int j=0; j<self->ways; j++) {
     //             for(int i=0; i<self->subblock_bits; i++) {
     //                 if(BITTEST(self->subblock_bitfield, k*self->subblock_bits*self->ways+self->subblock_bits*j+i)) {
     //                     PySys_WriteStdout("I");
@@ -494,7 +542,7 @@ static PyObject* Cache_store(Cache* self, PyObject *args, PyObject *kwds)
     PyArg_ParseTupleAndKeywords(args, kwds, "I|I", kwlist, &range.addr, &range.length);
     
     // Handling ranges in c tremendously increases the speed for multiple elements
-    Cache__store(self, range);
+    Cache__store(self, range, 0);
     
     Py_RETURN_NONE;
 }
@@ -524,7 +572,7 @@ static PyObject* Cache_iterstore(Cache* self, PyObject *args, PyObject *kwds)
 #else
         range.addr = PyInt_AsUnsignedLongMask(addr);
 #endif
-        Cache__store(self, range);
+        Cache__store(self, range, 0);
         
         Py_DECREF(addr);
     }
@@ -617,7 +665,7 @@ static PyObject* Cache_loadstore(Cache* self, PyObject *args, PyObject *kwds)
 #else
                 range.addr = PyInt_AsUnsignedLongMask(addr);
 #endif
-                Cache__store(self, range);
+                Cache__store(self, range, 0);
                 Py_DECREF(addr);
             }
         }
@@ -653,11 +701,28 @@ static PyObject* Cache_force_write_back(Cache* self) {
         if(self->placement[i].invalid == 0 && self->placement[i].dirty == 1) {
             if(self->store_to != NULL) {
                 // Found dirty line, initiate write-back:
-                //PySys_WriteStdout("%s dirty_line cl_id=%i\n", self->name, self->placement[i].cl_id);
+                // PySys_WriteStdout("%s dirty_line cl_id=%i write_combining=%i\n", self->name, self->placement[i].cl_id, self->write_combining);
+                
+                int non_temporal = 0; // default for non write-combining caches
+
+                if(self->write_combining == 1) {
+                    // Check if non-temporal store may be used or write-allocate is necessary
+                    non_temporal = 1;
+                    for(int j=0; j<self->subblock_bits; j++) {
+                        if(!BITTEST(self->subblock_bitfield, i*self->subblock_bits + j)) {
+                            // incomplete cacheline, thus write-allocate is necessary
+                            non_temporal = 0;
+                        }
+                        // Clear bits for future use
+                        BITCLEAR(self->subblock_bitfield, i*self->subblock_bits + j);
+                    }
+                }
+                
                 Py_INCREF(self->store_to);
                 Cache__store(
                     (Cache*)self->store_to,
-                    Cache__get_range_from_cl_id(self, self->placement[i].cl_id));
+                    Cache__get_range_from_cl_id(self, self->placement[i].cl_id),
+                    non_temporal);
                 Py_DECREF(self->store_to);
             }
             self->placement[i].dirty = 0;

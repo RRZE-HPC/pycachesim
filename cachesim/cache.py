@@ -198,10 +198,8 @@ class Cache(object):
         assert (write_back, write_allocate) in [(False, False), (True, True), (True, False)], \
             "Unsupported write policy, we only support write-through and non-write-allocate, " \
             "write-back and write-allocate, and write-back and non-write-allocate."
-        assert write_combining and write_back and not write_allocate or \
-                not (write_back and not write_allocate), \
-            "Write combining may only be used in a cache with write-back and non-write-allocate " \
-            "and vice-versa."
+        assert write_combining and write_back and not write_allocate or not write_combining, \
+            "Write combining may only be used in a cache with write-back and non-write-allocate"
         assert subblock_size is None or cl_size % subblock_size == 0, \
             "subblock_size needs to be a devisor of cl_size or None."
         # TODO check that ways only increase from higher  to lower _exclusive_ cache

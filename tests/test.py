@@ -46,7 +46,7 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l1.cached, set(range(512, 576)))
         self.assertEqual(l2.cached, set(range(448, 576)))
         self.assertEqual(l3.cached, set(range(320, 576)))
-    
+
     def _get_SandyEP_caches(self):
         # Cache hierarchy as found in a Sandy Brige EP:
         cacheline_size = 64
@@ -104,7 +104,7 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l1.STORE_count, 1)
         self.assertEqual(l2.STORE_count, length//64)
         self.assertEqual(l3.STORE_count, length//64)
-    
+
     def test_large_store_write_allocate(self):
         mh, l1, l2, l3, mem, cacheline_size = self._get_SandyEP_caches()
         
@@ -119,7 +119,7 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l1.STORE_count, length)
         self.assertEqual(l2.STORE_count, length//64)
         self.assertEqual(l3.STORE_count, length//64)
-    
+
     def test_large_fill_iter(self):
         mh, l1, l2, l3, mem, cacheline_size = self._get_SandyEP_caches()
         
@@ -167,7 +167,7 @@ class TestHighlevel(unittest.TestCase):
                  ((j+1)*matrix_width+i)*element_size], 
                 # Stores:
                 [(matrix_width*matrix_height + matrix_width*j+i)*element_size])
-    
+
     def test_2d5pt_L1_layerconditions(self):
         mh, l1, l2, l3, mem, cacheline_size = self._get_SandyEP_caches()
         
@@ -375,7 +375,7 @@ class TestHighlevel(unittest.TestCase):
         l3 = Cache(name="L3",
                    sets=2048, ways=64, cl_size=cacheline_size,  # 4MB
                    replacement_policy="LRU",
-                   write_back=True, write_allocate=True,
+                   write_back=True, write_allocate=False,  # victim caches don't need write-allocate
                    store_to=None, load_from=None, victims_to=None,
                    swap_on_load=False)  # This is a victim cache, so exclusiveness should be obvious
         mem.store_from(l3)
@@ -384,13 +384,13 @@ class TestHighlevel(unittest.TestCase):
                    replacement_policy="LRU",
                    write_back=True, write_allocate=True,
                    store_to=l3, load_from=None, victims_to=l3,
-                   swap_on_load=False) # L2-L1 is inclusive (unlike with AMD Istanbul)
+                   swap_on_load=False)  # L2-L1 is inclusive (unlike with AMD Istanbul)
         mem.load_to(l2)
         wcc = Cache(name="WCC",
                    sets=1, ways=64, cl_size=cacheline_size,  # 4KB
                    replacement_policy="LRU",
                    write_combining=True, subblock_size=1,
-                   write_back=True, write_allocate=False, # this policy only makes sens with WCC
+                   write_back=True, write_allocate=False,  # this policy only makes sens with WCC
                    store_to=l2, load_from=None, victims_to=None,
                    swap_on_load=False)
         l1 = Cache(name="L1",
@@ -403,24 +403,17 @@ class TestHighlevel(unittest.TestCase):
                             main_memory=mem)
         
         return cs, l1, wcc, l2, l3, mem, cacheline_size
-    
-    @unittest.skip("write-combining features are not yet fully implemented")
+
     def test_victim_write_back_cache(self):
         cs, l1, wcc, l2, l3, mem, cacheline_size = self._build_Bulldozer_caches()
-        cacheline_size = 23
         # STREAM copy 10MB in cacheline chunks
-        iteration_size = 1 #1024*1024*10//cacheline_size
+        iteration_size = 128//cacheline_size#1024*1024*10//cacheline_size
         offset = iteration_size*cacheline_size
         for i in range(0, iteration_size*cacheline_size, cacheline_size):
             cs.load(i, cacheline_size)
             cs.store(offset+i, cacheline_size)
         
         cs.force_write_back()
-        
-        from pprint import pprint
-        pprint(list(cs.stats()))
-        
-        # TODO sub_block_size not yet supported by backend.Cache and Cache
         
         self.assertEqual(l1.LOAD_count, iteration_size)
         self.assertEqual(l1.LOAD_byte, iteration_size*cacheline_size)
@@ -435,19 +428,58 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(wcc.MISS_count, 0)
         self.assertEqual(wcc.STORE_count, iteration_size)
         
-        self.assertEqual(l2.LOAD_count, iteration_size*2)
+        # TODO why -1 ?
+        self.assertEqual(l2.LOAD_count, iteration_size)
         self.assertEqual(l2.HIT_count, 0)
-        self.assertEqual(l2.MISS_count, iteration_size*2)
+        self.assertEqual(l2.MISS_count, iteration_size)
         self.assertEqual(l2.STORE_count, iteration_size)
         
-        self.assertEqual(l3.LOAD_count, iteration_size*2)
+        self.assertEqual(l3.LOAD_count, iteration_size)
         self.assertEqual(l3.HIT_count, 0)
-        self.assertEqual(l3.MISS_count, iteration_size*2)
+        self.assertEqual(l3.MISS_count, iteration_size)
         self.assertEqual(l3.STORE_count, iteration_size)
         
-        self.assertEqual(mem.LOAD_count, iteration_size*2)
-        self.assertEqual(mem.HIT_count, iteration_size*2)
+        self.assertEqual(mem.LOAD_count, iteration_size)
+        self.assertEqual(mem.HIT_count, iteration_size)
         self.assertEqual(mem.MISS_count, 0)
         self.assertEqual(mem.STORE_count, iteration_size)
+
+    def test_write_combining(self):
+        cs, l1, wcc, l2, l3, mem, cacheline_size = self._build_Bulldozer_caches()
+        # STREAM copy one cacheline in byte chunks
+        for i in range(0, cacheline_size):
+            cs.store(i)
+        
+        cs.force_write_back()
+        
+        # write-combining should eliminate the write-allocate in L2
+        self.assertEqual(l1.LOAD_count, 0)
+        self.assertEqual(l1.LOAD_byte, 0)
+        self.assertEqual(l1.HIT_count, 0)
+        self.assertEqual(l1.HIT_byte, 0)
+        self.assertEqual(l1.MISS_count, 0)
+        self.assertEqual(l1.STORE_count, cacheline_size)
+        self.assertEqual(l1.STORE_byte, cacheline_size)
+        
+        self.assertEqual(wcc.LOAD_count, 0)
+        self.assertEqual(wcc.HIT_count, 0)
+        self.assertEqual(wcc.MISS_count, 0)
+        self.assertEqual(wcc.STORE_count, cacheline_size)
+        
+        self.assertEqual(l2.LOAD_count, 0)
+        self.assertEqual(l2.HIT_count, 0)
+        self.assertEqual(l2.MISS_count, 0)
+        self.assertEqual(l2.STORE_count, 1)
+        self.assertEqual(l2.STORE_byte, cacheline_size)
+        
+        self.assertEqual(l3.LOAD_count, 0)
+        self.assertEqual(l3.HIT_count, 0)
+        self.assertEqual(l3.MISS_count, 0)
+        self.assertEqual(l3.STORE_count, 1)
+        
+        self.assertEqual(mem.LOAD_count, 0)
+        self.assertEqual(mem.HIT_count, 0)
+        self.assertEqual(mem.MISS_count, 0)
+        self.assertEqual(mem.STORE_count, 1)
         
         
