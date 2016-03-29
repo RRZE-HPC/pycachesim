@@ -47,6 +47,38 @@ class CacheSimulator(object):
             self.last_level = l
         
         self.main_memory = main_memory
+    
+    @classmethod
+    def from_dict(cls, d):
+        '''Creates cache hierarchy from dictionary.'''
+        main_memory = MainMemory()
+        caches = {}
+        first_level = None
+        
+        referred_caches = set()
+    
+        # First pass, create all named caches and collect references
+        for name, conf in d.items():
+            caches[name] = Cache(
+                name=name, **{k:v for k,v in conf.items() if k not in ['store_to', 'load_from']})
+            if 'store_to' in conf:
+                referred_caches.add(conf['store_to'])
+            if 'load_from' in conf:
+                referred_caches.add(conf['load_from'])
+    
+        # Second pass, connect caches
+        for name, conf in d.items():
+            if 'store_to' in conf and conf['store_to'] is not None:
+                caches[name].store_to = caches[conf['store_to']]
+            if 'load_from' in conf and conf['load_from'] is not None:
+                caches[name].load_from = caches[conf['load_from']]
+    
+        # Find first level (not target of any load_from or store_to)
+        first_level = set(d.keys()) - referred_caches
+        assert len(first_level) == 1, "Unable to find first cache level."
+        first_level = caches[list(first_level)[0]]
+
+        return cls(first_level, main_memory), caches, main_memory
         
     def reset_stats(self):
         '''Resets statistics in all cache levels.

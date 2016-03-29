@@ -481,5 +481,27 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(mem.HIT_count, 0)
         self.assertEqual(mem.MISS_count, 0)
         self.assertEqual(mem.STORE_count, 1)
+    
+    def test_from_dict(self):
+        cs, caches, mem = CacheSimulator.from_dict({
+            'L1': {
+                'sets': 64, 'ways': 8, 'cl_size': 64,
+                'replacement_policy': 'LRU',
+                'write_allocate': True, 'write_back': True,
+                'load_from': 'L2', 'store_to': 'L2'},
+             'L2': {
+                'sets': 512, 'ways': 8, 'cl_size': 64,
+                'replacement_policy': 'LRU',
+                'write_allocate': True, 'write_back': True,
+                'load_from': 'L3', 'store_to': 'L3'},
+             'L3': {
+                'sets': 20480, 'ways': 16, 'cl_size': 64,
+                'replacement_policy': 'LRU', 
+                'write_allocate': True, 'write_back': True}
+        })
         
+        self.assertEqual(cs.first_level.name, 'L1')
         
+        caches = {c.name: c for c in cs.levels(with_mem=False)}
+        
+        self.assertEqual(sorted(['L1', 'L2', 'L3']), sorted(caches.keys()))
