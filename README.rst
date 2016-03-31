@@ -8,24 +8,25 @@ A single-core cache hierarchy simulator written in python.
 
 The goal is to accurately simulate the caching (allocation/hit/miss/replace/evict) behavior of all cache levels found in modern processors. It is developed as a backend to `kerncraft <https://github.com/RRZE-HPC/kerncraft>`_, but is also planned to introduce a command line interface to replay LOAD/STORE instructions.
 
-Current features:
+Currently supported features:
  * Inclusive cache hierarchies
- * LRU, MRU, RR and FIFO policies supported
- * Support for cache associativity
- * Only write-allocate with write-back support
+ * LRU, MRU, RR and FIFO policies 
+ * N-way cache associativity
+ * Write-allocate with write-back caches
+ * Non-write-allocate with write-through caches
+ * Write-combining with sub-blocking
  * Speed (core is implemented in C)
  * Python 2.7+ and 3.4+ support, with no other dependencies
 
 Planned features:
- * Rules to define the interaction between cache levels (e.g., exclusive caches, copy-back,...)
- * Support write-through architectures
- * Report cachelines and bytes on all levels
+ * Report cachelines on all levels
  * Report timeline of cache events
  * Visualize events (html file?)
  * More detailed store/evict handling (e.g., using dirty bits)
  * (uncertain) instruction cache
  * Optional classification into compulsory/capacity and conflict misses (by simulating other cache configurations in parallel)
  * (uncertain) multi-core support
+ * Remove cl_size growth requirement (NVIDIA Kepler's L1 has 128B cl_size and L2 with 32B)
  
 License
 -------
@@ -39,34 +40,37 @@ Usage
 
     from cachesim import CacheSimulator, Cache, MainMemory
     
-    cacheline_size = 64
-    l3 = Cache(20480, 16, cacheline_size, "LRU")  # 20MB 16-ways
-    l2 = Cache(512, 8, cacheline_size, "LRU", parent=l3)  # 256kB 8-ways
-    l1 = Cache(64, 8, cacheline_size, "LRU", parent=l2)  # 32kB 8-ways
-    mem = MainMemory(l3)
-    cs = CacheSimulator(l1, mem, write_allocate=True)
+    mem = MainMemory()
+    l3 = Cache("L3", 20480, 16, 64, "LRU")  # 20MB: 20480 sets, 16-ways with cacheline size of 64 bytes
+    mem.load_to(l3)
+    mem.store_from(l3)
+    l2 = Cache("L2", 512, 8, 64, "LRU", store_to=l3, load_from=l3)  # 256KB
+    l1 = Cache("L1", 64, 8, 64, "LRU", store_to=l2, load_from=l2)  # 32KB
+    cs = CacheSimulator(l1, mem)
     
     cs.load(2342)  # Loads one byte from address 2342, should be a miss in all cache-levels
-    cs.store(512, length=8)  # stores 8 bytes to addresses 512-519,
-                                     # will also be a load miss (due to write-allocate)
-    cs.load(512, 520)  # Loads from address 512 until (exclusive) 520 (eight bytes)
+    cs.store(512, length=8)  # Stores 8 bytes to addresses 512-519,
+                             # will also be a load miss (due to write-allocate)
+    cs.load(512, length=8)  # Loads from address 512 until (exclusive) 520 (eight bytes)
     
-    print(list(cs.stats()))
+    cs.force_write_back()
+    cs.print_stats()
     
 This should return:
 
 .. code-block:: python
 
-    [{u'LOAD': 17L, u'MISS': 2L, u'HIT': 15L, u'STORE': 8L},
-     {u'LOAD': 2L, u'MISS': 2L, u'HIT': 0L, u'STORE': 8L},
-     {u'LOAD': 2L, u'MISS': 2L, u'HIT': 0L, u'STORE': 8L},
-     {u'LOAD': 2L, u'MISS': 0L, u'HIT': 2L, u'STORE': 8L}]
+    CACHE *******HIT******** *******MISS******* *******LOAD******* ******STORE*******
+       L1      1 (       8B)      2 (      65B)      3 (      73B)      1 (       8B)
+       L2      0 (       0B)      2 (     128B)      2 (     128B)      1 (      64B)
+       L3      0 (       0B)      2 (     128B)      2 (     128B)      1 (      64B)
+      MEM      2 (     128B)      0 (       0B)      2 (     128B)      1 (      64B)
 
-Each dictionary refers to one memory-level, starting with L1 and ending with main memory. The 17 loads are the sum of all byte-wise access to the cache-hierarchy. 1 (from first load) +8 (from store with write-allocate) +8 (from second load) = 17.
+Each row refers to one memory-level, starting with L1 and ending with main memory. The 3 loads in L1 are the sum of all individual accesses to the cache-hierarchy. 1 (from first load) + 1 (from store with write-allocate) + 1 (from second load) = 3.
 
-The 15 hits, are for bytes which were cached already. The high number is due to the byte-wise operation of the interface, so 15 bytes were already present in cache. Internally the pycachesim operates on cache-lines, which all addresses get transformed to. Thus, the two misses throughout all cache-levels are actually two complete cache-lines and after the cache-line had been loaded the consecutive access to the same cache-line are handled as hits.
+The 1 hit, is for bytes which were cached already. Internally the pycachesim operates on cache-lines, which all addresses get transformed to. Thus, the two misses throughout all cache-levels are actually two complete cache-lines and after the cache-line had been loaded the consecutive access to the same cache-line are handled as hits. That is also the reason why data sizes increase from L1 to L2. L1 is accessed byte-wise and L2 only with cache-line granularity.
 
-So: hits and loads in L1 are byte-wise, just like stores throughout all cache-levels. Every other statistical information are based on cache-lines.
+So: hits, misses, stores and loads in L1 are byte-wise, just like stores throughout all cache-levels. Every other statistical information are based on cache-lines.
 
 Comparison to other Cache Simulators
 ====================================
@@ -98,7 +102,7 @@ callgrind_         x              x                              x             x
 SMPcache_                         x                              x             x                 x        x       ?                                                                Windows GUI       no, free for education und research        
 CMPsim_                           x                              x             x       x         x        x                    x             ?             ?             x         ?                 no, source not public         
 CASPER_            x              x             x                x             x       x         x        x       x            x                                         x         perl, c           no, source not public        
-pycachesim                        x                              x             x       x         x        x                    x           planned       planned                   python            yes, AGPLv3          
+pycachesim                        x                              x             x       x         x        x                    x           planned         x                       python            yes, AGPLv3          
 =========== ================= =========== =============== ================= ======== ======== ========= ======= ======== ============== ============== =========== =============== ================= ===================================
 
 .. _gem5: http://gem5.org/Main_Page
