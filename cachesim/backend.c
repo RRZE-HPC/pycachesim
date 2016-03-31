@@ -55,7 +55,7 @@ typedef struct Cache {
     unsigned int cl_bits;
     unsigned int subblock_size;
     unsigned int subblock_bits;
-    int replacement_policy_id; // 0 = FIFO, 1 = LRU, 2 = MRU, 3 = RR 
+    int replacement_policy_id; // 0 = FIFO, 1 = LRU, 2 = MRU, 3 = RR
                                // (state is kept in the ordering)
                                // for LFU an additional field would be required to capture state
     int write_back; // 1 = write-back
@@ -64,19 +64,21 @@ typedef struct Cache {
                         // 0 = non-write-allocate
     int write_combining; // 1 = this is a write-combining cache
                          // 0 = regular cache
-    
+
     PyObject *load_from;
     PyObject *store_to;
     PyObject *victims_to;
     int swap_on_load;
-    
+
     cache_entry *placement;
     char *subblock_bitfield;
-    
+
     struct stats LOAD;
     struct stats STORE;
     struct stats HIT;
     struct stats MISS;
+
+    int verbosity;
 } Cache;
 
 static void Cache_dealloc(Cache* self) {
@@ -141,6 +143,8 @@ static PyMemberDef Cache_members[] = {
      "number of misses"},
     {"MISS_byte", T_UINT, offsetof(Cache, MISS.byte), 0,
      "number of bytes missed"},
+    {"verbosity", T_INT, offsetof(Cache, verbosity), 0,
+     "verbosity level of output"},
     {NULL}  /* Sentinel */
 };
 
@@ -185,16 +189,16 @@ inline static addr_range Cache__get_range_from_cl_id_and_range(
 inline static int Cache__get_location(Cache* self, unsigned int cl_id, unsigned int set_id) {
     // Returns the location a cacheline has in a cache
     // if cacheline is not present, returns -1
-    // TODO use sorted data structure for faster searches in case of large number of 
+    // TODO use sorted data structure for faster searches in case of large number of
     // ways or full-associativity?
-    
+
     for(int i=0; i<self->ways; i++) {
         if(self->placement[set_id*self->ways+i].invalid == 0 &&
            self->placement[set_id*self->ways+i].cl_id == cl_id) {
             return i;
         }
     }
-    
+
     return -1; // Not found
 }
 
@@ -213,17 +217,17 @@ static int Cache__inject(Cache* self, cache_entry* entry) {
     // Get cacheline id to be replaced according to replacement strategy
     int replace_idx;
     cache_entry replace_entry;
-    
+
     if(self->replacement_policy_id == 0 || self->replacement_policy_id == 1) {
         // FIFO: replace end of queue
         // LRU: replace end of queue
         replace_idx = 0;
         replace_entry = self->placement[set_id*self->ways+self->ways-1];
-        
+
         // Reorder queue
         for(int i=self->ways-1; i>0; i--) {
             self->placement[set_id*self->ways+i] = self->placement[set_id*self->ways+i-1];
-            
+
             // Reorder bitfild in accordance to queue
             if(self->write_combining == 1) {
                 for(int j=0; j<self->subblock_bits; j++) {
@@ -242,11 +246,11 @@ static int Cache__inject(Cache* self, cache_entry* entry) {
         // MRU: replace first of queue
         replace_idx = self->ways-1;
         replace_entry = self->placement[set_id*self->ways];
-        
+
         // Reorder queue
         for(int i=0; i>self->ways-1; i++) {
             self->placement[set_id*self->ways+i] = self->placement[set_id*self->ways+i+1];
-            
+
             // Reorder bitfild in accordance to queue
             if(self->write_combining == 1) {
                 for(int j=0; j<self->subblock_bits; j++) {
@@ -266,10 +270,10 @@ static int Cache__inject(Cache* self, cache_entry* entry) {
         replace_idx = rand() & (self->ways - 1);
         replace_entry = self->placement[set_id*self->ways+replace_idx];
     }
-    
+
     // Replace other cacheline according to replacement strategy (using placement order as state)
     self->placement[set_id*self->ways+replace_idx] = *entry;
-    
+
     // write-back: check for dirty bit of replaced and inform next lower level of store
     if(self->write_back == 1) {
         if(replace_entry.invalid == 0 && replace_entry.dirty == 1) {
@@ -303,13 +307,13 @@ static int Cache__inject(Cache* self, cache_entry* entry) {
             } // else last-level-cache
         }
     }
-    
+
     // Deliver replaced cacheline to victim cache, if configured and valid
     if(self->victims_to != NULL && replace_entry.invalid == 0) {
         // Inject into victims_to
         Cache__inject((Cache*)self->victims_to, &replace_entry);
     }
-    
+
     return replace_idx;
 }
 
@@ -320,15 +324,17 @@ static int Cache__load(Cache* self, addr_range range) {
     self->LOAD.count++;
     self->LOAD.byte += range.length;
     int placement_idx = -1;
-    
+
     // Handle range:
     unsigned int last_cl_id = Cache__get_cacheline_id(self, range.addr+range.length-1);
     for(unsigned int cl_id=Cache__get_cacheline_id(self, range.addr); cl_id<=last_cl_id; cl_id++) {
         unsigned int set_id = Cache__get_set_id(self, cl_id);
-        //if(self->ways == 8) { //&& self->LOAD.count < 200) {
-        // PySys_WriteStdout("%s LOAD=%i addr=%i length=%i cl_id=%i set_id=%i\n", self->name, self->LOAD.count, range.addr, range.length, cl_id, set_id);
-        //}
-        
+        if(self->verbosity >= 1) {
+            PySys_WriteStdout(
+                "%s LOAD=%i addr=%i length=%i cl_id=%i set_id=%i\n",
+                self->name, self->LOAD.count, range.addr, range.length, cl_id, set_id);
+        }
+
         // Check if cl_id is already cached
         int location = Cache__get_location(self, cl_id, set_id);
         if(location != -1) {
@@ -336,12 +342,13 @@ static int Cache__load(Cache* self, addr_range range) {
             self->HIT.count++;
             // We only add actual bytes that were requested to hit.byte
             self->HIT.byte += self->cl_size < range.length ? self->cl_size : range.length;
-            // if(self->ways == 16 && set_id == 0 && self->MISS.count == 0) {
-            //     PySys_WriteStdout("HIT self->LOAD=%i addr=%i cl_id=%i set_id=%i\n", self->LOAD.count, range.addr, cl_id, set_id);
-            // }
-            
+            if(self->verbosity >= 1) {
+                PySys_WriteStdout("HIT self->LOAD=%i addr=%i cl_id=%i set_id=%i\n",
+                                  self->LOAD.count, range.addr, cl_id, set_id);
+            }
+
             cache_entry entry = self->placement[set_id*self->ways+location];
-        
+
             if(self->replacement_policy_id == 0 || self->replacement_policy_id == 3) {
                 // FIFO: nothing to do
                 // RR: nothing to do
@@ -354,7 +361,7 @@ static int Cache__load(Cache* self, addr_range range) {
                     for(int j=location; j>0; j--) {
                         self->placement[set_id*self->ways+j] =
                             self->placement[set_id*self->ways+j-1];
-                        
+
                         // Reorder bitfild in accordance to queue
                         if(self->write_combining == 1) {
                             for(int i=0; i<self->subblock_bits; i++) {
@@ -376,23 +383,27 @@ static int Cache__load(Cache* self, addr_range range) {
                 }
                 placement_idx = 0;
                 continue;
-            } 
+            }
             // TODO if this is an exclusive cache, swap delivered cacheline with swap_cl_id (here and at end -> DO NOT RETURN)
         }
-        
+
         // MISS!
         self->MISS.count++;
         // We only add actual bytes that were requested to miss.byte
         self->MISS.byte += self->cl_size < range.length ? self->cl_size : range.length;
-        // if(self->ways == 8 && self->sets == 64) {//self->LOAD.count < 200) {
-        //     PySys_WriteStdout("CACHED [%i", self->placement[set_id*self->ways]);
-        //     for(int i=1; i<self->ways; i++) {
-        //         PySys_WriteStdout(", %i", self->placement[set_id*self->ways+i].cl_id);
-        //     }
-        //     PySys_WriteStdout("]\n");
-        //PySys_WriteStdout("%s MISS self->LOAD=%i addr=%i length=%i cl_id=%i set_id=%i\n", self->name, self->LOAD.count, range.addr, range.length, cl_id, set_id);
-        // }
-        
+        if(self->verbosity >= 2) {
+            PySys_WriteStdout("CACHED [%i", self->placement[set_id*self->ways].cl_id);
+            for(int i=1; i<self->ways; i++) {
+                PySys_WriteStdout(", %i", self->placement[set_id*self->ways+i].cl_id);
+            }
+            PySys_WriteStdout("]\n");
+        }
+        if(self->verbosity >= 1) {
+            PySys_WriteStdout(
+                "%s MISS self->LOAD=%i addr=%i length=%i cl_id=%i set_id=%i\n",
+                self->name, self->LOAD.count, range.addr, range.length, cl_id, set_id);
+        }
+
         // Load from lower cachelevel
         // TODO also check victim cache, if available
         if(self->load_from != NULL) {
@@ -402,18 +413,18 @@ static int Cache__load(Cache* self, addr_range range) {
             // TODO, replace_cl_id);
             Py_DECREF(self->load_from);
         } // else last-level-cache
-        
+
         cache_entry entry;
         entry.cl_id = cl_id;
         entry.dirty = 0;
         entry.invalid = 0;
-        
+
         // Inject new entry into own cache. This also handles replacement.
         placement_idx = Cache__inject(self, &entry);
-        
+
         // TODO if this is an exclusive cache (swap_on_load = True), swap delivered cacheline with swap_cl_id (here and at hit)
     }
-    // TODO Does this make sens or multiple cachelines? It is atm only used by write-allocate, 
+    // TODO Does this make sens or multiple cachelines? It is atm only used by write-allocate,
     // which should be fine, because requests are already split into individual cachelines
     return placement_idx;
 }
@@ -426,12 +437,15 @@ static void Cache__store(Cache* self, addr_range range, int non_temporal) {
     for(unsigned int cl_id=Cache__get_cacheline_id(self, range.addr); cl_id<=last_cl_id; cl_id++) {
         unsigned int set_id = Cache__get_set_id(self, cl_id);
         int location = Cache__get_location(self, cl_id, set_id);
-        // if(self->subblock_bitfield != NULL)
-        // PySys_WriteStdout("%s STORE=%i NT=%i addr=%i length=%i cl_id=%i sets=%i location=%i\n", self->name, self->LOAD.count, non_temporal, range.addr, range.length, cl_id, self->sets, location);
-        
+        if(self->verbosity >= 1) {
+            PySys_WriteStdout("%s STORE=%i NT=%i addr=%i length=%i cl_id=%i sets=%i location=%i\n",
+                              self->name, self->LOAD.count, non_temporal, range.addr, range.length,
+                              cl_id, self->sets, location);
+        }
+
         if(self->write_allocate == 1 && non_temporal == 0) {
             // Write-allocate policy
-            
+
             // Make sure line is loaded into cache (this will produce HITs and MISSes):
             if(location == -1) {
                 // TODO does this also make sens if store with write-allocate and MISS happens on L2?
@@ -448,7 +462,7 @@ static void Cache__store(Cache* self, addr_range range, int non_temporal) {
             entry.invalid = 0;
             location = Cache__inject(self, &entry);
         }
-        
+
         // Mark address range as cached in the bitfield
         if(self->write_combining == 1) {
             // If write_combining is active, set the touched bits:
@@ -463,58 +477,58 @@ static void Cache__store(Cache* self, addr_range range, int non_temporal) {
                        set_id*self->ways*self->subblock_bits + location*self->subblock_bits + i);
             }
         }
-        // PySys_WriteStdout("%s STORE=%i NT=%i addr=%i length=%i cl_id=%i sets=%i set_id=%i ways=%i location=%i\n", self->name, self->LOAD.count, non_temporal, range.addr, range.length, cl_id, self->sets, set_id, self->ways, location);
-        
+
         if(self->write_back == 1 && location != -1) {
             // Write-back policy and cache-line in cache
-            
+
             // Mark cacheline as dirty for later write-back during eviction
             self->placement[set_id*self->ways+location].dirty = 1;
             // PySys_WriteStdout("DIRTY\n");
         } else {
             // Write-through policy or cache-line not in cache
-            
+
             // Store to lower cachelevel
             // TODO use Cache__inject
             if(self->store_to != NULL) {
                 Py_INCREF(self->store_to);
-                Cache__store((Cache*)(self->store_to), 
+                Cache__store((Cache*)(self->store_to),
                              Cache__get_range_from_cl_id_and_range(self, cl_id, range),
                              non_temporal);
                 Py_DECREF(self->store_to);
             } // else last-level-cache
         }
     }
-    
-    //print bitfield
-    // if(self->subblock_bitfield != NULL) {
-    //     for(int k=0; k<self->sets; k++) {
-    //        for(int j=0; j<self->ways; j++) {
-    //             for(int i=0; i<self->subblock_bits; i++) {
-    //                 if(BITTEST(self->subblock_bitfield, k*self->subblock_bits*self->ways+self->subblock_bits*j+i)) {
-    //                     PySys_WriteStdout("I");
-    //                 } else {
-    //                     PySys_WriteStdout("O");
-    //                 }
-    //             }
-    //             PySys_WriteStdout("\n");
-    //         }
-    //         PySys_WriteStdout("\n\n");
-    //     }
-    // }
+
+    // Print bitfield
+    if(self->verbosity >= 3 && self->subblock_bitfield != NULL) {
+        for(int k=0; k<self->sets; k++) {
+           for(int j=0; j<self->ways; j++) {
+                for(int i=0; i<self->subblock_bits; i++) {
+                    if(BITTEST(self->subblock_bitfield,
+                               k*self->subblock_bits*self->ways+self->subblock_bits*j+i)) {
+                        PySys_WriteStdout("I");
+                    } else {
+                        PySys_WriteStdout("O");
+                    }
+                }
+                PySys_WriteStdout("\n");
+            }
+            PySys_WriteStdout("\n\n");
+        }
+    }
 }
 
 static PyObject* Cache_load(Cache* self, PyObject *args, PyObject *kwds)
 {
     addr_range range;
     range.length = 1; // default to 1
-    
+
     static char *kwlist[] = {"addr", "length", NULL};
     PyArg_ParseTupleAndKeywords(args, kwds, "I|I", kwlist, &range.addr, &range.length);
-    
-    Cache__load(self, range); // TODO , 0); 
+
+    Cache__load(self, range); // TODO , 0);
     // Swap cl_id is irrelevant here, since this is only called on first level cache
-    
+
     Py_RETURN_NONE;
 }
 
@@ -523,10 +537,10 @@ static PyObject* Cache_iterload(Cache* self, PyObject *args, PyObject *kwds)
     PyObject *addrs;
     addr_range range;
     range.length = 1; // default to 1
-    
+
     static char *kwlist[] = {"addrs", "length", NULL};
     PyArg_ParseTupleAndKeywords(args, kwds, "O|I", kwlist, &addrs, &range.length);
-    
+
     // Get and check iterator
     PyObject *addrs_iter = PyObject_GetIter(addrs);
     if(addrs_iter == NULL) {
@@ -543,7 +557,7 @@ static PyObject* Cache_iterload(Cache* self, PyObject *args, PyObject *kwds)
 #else
         range.addr = PyInt_AsUnsignedLongMask(addr);
 #endif
-        Cache__load(self, range); // TODO , 0); 
+        Cache__load(self, range); // TODO , 0);
         // Swap cl_id is irrelevant here, since this is only called on first level cache
 
         Py_DECREF(addr);
@@ -556,13 +570,13 @@ static PyObject* Cache_store(Cache* self, PyObject *args, PyObject *kwds)
 {
     addr_range range;
     range.length = 1; // default to 1
-    
+
     static char *kwlist[] = {"addr", "length", NULL};
     PyArg_ParseTupleAndKeywords(args, kwds, "I|I", kwlist, &range.addr, &range.length);
-    
+
     // Handling ranges in c tremendously increases the speed for multiple elements
     Cache__store(self, range, 0);
-    
+
     Py_RETURN_NONE;
 }
 
@@ -571,17 +585,17 @@ static PyObject* Cache_iterstore(Cache* self, PyObject *args, PyObject *kwds)
     PyObject *addrs;
     addr_range range;
     range.length = 1; // default to 1
-    
+
     static char *kwlist[] = {"addrs", "length", NULL};
     PyArg_ParseTupleAndKeywords(args, kwds, "O|I", kwlist, &addrs, &range.length);
-    
+
     // Get and check iterator
     PyObject *addrs_iter = PyObject_GetIter(addrs);
     if(addrs_iter == NULL) {
         PyErr_SetString(PyExc_ValueError, "addrs is not iteratable");
         return NULL;
     }
-    
+
     // Iterate of elements in addrs
     PyObject *addr;
     while((addr = PyIter_Next(addrs_iter))) {
@@ -592,7 +606,7 @@ static PyObject* Cache_iterstore(Cache* self, PyObject *args, PyObject *kwds)
         range.addr = PyInt_AsUnsignedLongMask(addr);
 #endif
         Cache__store(self, range, 0);
-        
+
         Py_DECREF(addr);
     }
     Py_DECREF(addrs_iter);
@@ -604,17 +618,17 @@ static PyObject* Cache_loadstore(Cache* self, PyObject *args, PyObject *kwds)
     PyObject *addrs;
     addr_range range;
     range.length = 1; // default to 1
-    
+
     static char *kwlist[] = {"addrs", "length", NULL};
     PyArg_ParseTupleAndKeywords(args, kwds, "O|I", kwlist, &addrs, &range.length);
-    
+
     // Get and check iterator
     PyObject *addrs_iter = PyObject_GetIter(addrs);
     if(addrs_iter == NULL) {
         PyErr_SetString(PyExc_ValueError, "addrs is not iteratable");
         return NULL;
     }
-    
+
     // Iterate of elements in addrs
     PyObject *loadstore_item, *load_addrs, *store_addrs, *addr, *load_iter, *store_iter;
     while((loadstore_item = PyIter_Next(addrs_iter))) {
@@ -629,7 +643,7 @@ static PyObject* Cache_loadstore(Cache* self, PyObject *args, PyObject *kwds)
         }
         load_addrs = PySequence_GetItem(loadstore_item, 0);
         store_addrs = PySequence_GetItem(loadstore_item, 1);
-        
+
         // Unless None (otherwise ignore loads)
         if(load_addrs != Py_None) {
             if(!PySequence_Check(load_addrs)) {
@@ -640,7 +654,7 @@ static PyObject* Cache_loadstore(Cache* self, PyObject *args, PyObject *kwds)
 
             // FIXME maybe this is better: Pass along to iterstore
             //Cache_iterstore(self, store_addrs, length)
-            
+
             // Iterate of elements in load_addrs
             load_iter = PyObject_GetIter(load_addrs);
             if(load_iter == NULL) {
@@ -654,12 +668,12 @@ static PyObject* Cache_loadstore(Cache* self, PyObject *args, PyObject *kwds)
 #else
                 range.addr = PyInt_AsUnsignedLongMask(addr);
 #endif
-                Cache__load(self, range); // TODO , 0); 
+                Cache__load(self, range); // TODO , 0);
                 // Swap cl_id is irrelevant here, since this is only called on first level cache
                 Py_DECREF(addr);
             }
         }
-        
+
         // If store addresses are given
         if(store_addrs != Py_None) {
             if(!PySequence_Check(store_addrs)) {
@@ -667,10 +681,10 @@ static PyObject* Cache_loadstore(Cache* self, PyObject *args, PyObject *kwds)
                     PyExc_ValueError, "store element does not provide a sequence protocol");
                 return NULL;
             }
-            
+
             // FIXME maybe this is better: Pass along to iterstore
             //Cache_iterload(self, load_addrs, length)
-            
+
             // Iterate of elements in store_addrs
             store_iter = PyObject_GetIter(store_addrs);
             if(store_iter == NULL) {
@@ -688,7 +702,7 @@ static PyObject* Cache_loadstore(Cache* self, PyObject *args, PyObject *kwds)
                 Py_DECREF(addr);
             }
         }
-        
+
         Py_DECREF(load_addrs);
         Py_DECREF(store_addrs);
         Py_DECREF(loadstore_item);
@@ -723,7 +737,7 @@ static PyObject* Cache_force_write_back(Cache* self) {
             if(self->store_to != NULL) {
                 // Found dirty line, initiate write-back:
                 // PySys_WriteStdout("%s dirty_line cl_id=%i write_combining=%i\n", self->name, self->placement[i].cl_id, self->write_combining);
-                
+
                 int non_temporal = 0; // default for non write-combining caches
 
                 if(self->write_combining == 1) {
@@ -738,7 +752,7 @@ static PyObject* Cache_force_write_back(Cache* self) {
                         BITCLEAR(self->subblock_bitfield, i*self->subblock_bits + j);
                     }
                 }
-                
+
                 Py_INCREF(self->store_to);
                 Cache__store(
                     (Cache*)self->store_to,
@@ -757,17 +771,17 @@ static PyObject* Cache_reset_stats(Cache* self) {
     self->STORE.count = 0;
     self->HIT.count = 0;
     self->MISS.count = 0;
-    
+
     self->LOAD.byte = 0;
     self->STORE.byte = 0;
     self->HIT.byte = 0;
     self->MISS.byte = 0;
-    
+
     // self->LOAD.cl = 0;
     // self->STORE.cl = 0;
     // self->HIT.cl = 0;
     // self->MISS.cl = 0;
-    
+
     Py_RETURN_NONE;
 }
 
@@ -780,7 +794,7 @@ static PyMethodDef Cache_methods[] = {
     {"contains", (PyCFunction)Cache_contains, METH_VARARGS, NULL},
     {"force_write_back", (PyCFunction)Cache_force_write_back, METH_VARARGS, NULL},
     {"reset_stats", (PyCFunction)Cache_reset_stats, METH_VARARGS, NULL},
-    
+
     /* Sentinel */
     {NULL, NULL}
 };
@@ -793,7 +807,7 @@ static PyObject* Cache_cached_get(Cache* self) {
         if(self->placement[i].invalid) {
             continue;
         }
-        
+
         // For each cached cacheline expand to all cached addresses:
         for(int j=0; j<self->cl_size; j++) {
             // PySys_WriteStdout("%i %i %i %i\n", self->sets, self->ways, i, self->placement[i].cl_id);
@@ -808,7 +822,7 @@ static PyObject* Cache_cached_get(Cache* self) {
 
 static PyGetSetDef Cache_getset[] = {
     {"cached", (getter)Cache_cached_get, NULL, "cache", NULL},
-    
+
     /* Sentinel */
     {NULL},
 };
@@ -858,21 +872,22 @@ static PyTypeObject CacheType = {
 
 static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
     PyObject *store_to, *load_from, *victims_to, *tmp;
-    static char *kwlist[] = {"name", "sets", "ways", "cl_size", 
+    self->verbosity = 0;
+    static char *kwlist[] = {"name", "sets", "ways", "cl_size",
                              "replacement_policy_id", "write_back", "write_allocate",
                              "write_combining", "subblock_size",
                              "load_from", "store_to", "victims_to",
-                             "swap_on_load", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "sIIIiiiiiOOOi", kwlist,
+                             "swap_on_load", "verbosity", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "sIIIiiiiiOOOi|i", kwlist,
                                      &self->name, &self->sets, &self->ways, &self->cl_size,
                                      &self->replacement_policy_id,
                                      &self->write_back, &self->write_allocate,
                                      &self->write_combining, &self->subblock_size,
                                      &load_from, &store_to, &victims_to,
-                                     &self->swap_on_load)) {
+                                     &self->swap_on_load, &self->verbosity)) {
         return -1;
     }
-    
+
     // Handle load_from parent (if given)
     if(load_from != Py_None) {
         if(!PyObject_IsInstance(load_from, (PyObject*)&CacheType)) {
@@ -886,7 +901,7 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
     } else {
         self->load_from = NULL;
     }
-    
+
     // Handle store_to parent (if given)
     if(store_to != Py_None) {
         if(!PyObject_IsInstance(store_to, (PyObject*)&CacheType)) {
@@ -900,7 +915,7 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
     } else {
         self->store_to = NULL;
     }
-    
+
     // Handle victims_to parent (if given)
     if(victims_to != Py_None) {
         if(!PyObject_IsInstance(victims_to, (PyObject*)&CacheType)) {
@@ -915,7 +930,7 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
     } else {
         self->victims_to = NULL;
     }
-    
+
     // TODO validate store, load and victim paths so no null objects will be used until LLC/mem? is hit
     // should we introduce a memory object in c?
 
@@ -936,10 +951,10 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
         PyErr_SetString(PyExc_ValueError, "cl_size needs to be a power of two.");
         return -1;
     }
-    
+
     // Get number of bits in cacheline adressing
     self->cl_bits = log2_uint(self->cl_size);
-    
+
     // Check if subblock_size is a divisor of cl_size
     if(self->cl_size % self->subblock_size != 0) {
         // throw exception
@@ -947,7 +962,7 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
         return -1;
     }
     self->subblock_bits = self->cl_size/self->subblock_size;
-    
+
     // Allocate subblock_bitfield
     if(self->write_combining && self->subblock_size != self->cl_size) {
         // Subblocking will be used:
@@ -964,9 +979,12 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
     }
 
     Cache_reset_stats(self);
-    
-    //PySys_WriteStdout("CACHE sets=%i ways=%i cl_size=%i cl_bits=%i\n", self->sets, self->ways, self->cl_size, self->cl_bits);
-    
+
+    if(self->verbosity >= 1) {
+        PySys_WriteStdout("CACHE sets=%i ways=%i cl_size=%i cl_bits=%i\n",
+                          self->sets, self->ways, self->cl_size, self->cl_bits);
+    }
+
     return 0;
 }
 
@@ -999,7 +1017,7 @@ initbackend(void)
 
     if (module == NULL)
         INITERROR;
-    
+
     CacheType.tp_new = PyType_GenericNew;
     if (PyType_Ready(&CacheType) < 0)
         INITERROR;

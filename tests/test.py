@@ -505,3 +505,7 @@ class TestHighlevel(unittest.TestCase):
         caches = {c.name: c for c in cs.levels(with_mem=False)}
         
         self.assertEqual(sorted(['L1', 'L2', 'L3']), sorted(caches.keys()))
+        self.assertEqual(mem.last_level_load.name, 'L3')
+        self.assertEqual(mem.last_level_store.name, 'L3')
+        self.assertEqual(cs.first_level.backend.store_to, caches['L2'].backend)
+        self.assertEqual(cs.first_level.backend.load_from, caches['L2'].backend)
