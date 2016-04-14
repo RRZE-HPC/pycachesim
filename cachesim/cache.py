@@ -102,7 +102,7 @@ class CacheSimulator(object):
     def force_write_back(self):
         '''Write all pending dirty lines back.'''
         # force_write_back() is acting recursive by it self, but multiple write-back first level
-        # caches are imaginable. Better safe then sorry:
+        # caches are imaginable. Better safe than sorry:
         for c in self.levels(with_mem=False):
             c.force_write_back()
 
@@ -154,7 +154,7 @@ class CacheSimulator(object):
         for s in self.stats():
             print("{name:>5} {HIT_count:>6} ({HIT_byte:>8}B) {MISS_count:>6} ({MISS_byte:>8}B) "
                   "{LOAD_count:>6} ({LOAD_byte:>8}B) {STORE_count:>6} "
-                  "({STORE_byte:>8}B)".format(**s), file=file)
+                  "({STORE_byte:>8}B)".format(HIT_bytes=2342, **s), file=file)
 
     def levels(self, with_mem=True):
         p = self.first_level
