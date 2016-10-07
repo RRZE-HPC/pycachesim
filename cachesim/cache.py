@@ -321,6 +321,14 @@ class Cache(object):
             raise AttributeError("'{}' object has no attribute '{}'".format(self.__class__, key))
 
     def stats(self):
+        assert self.backend.LOAD_count >= 0, "LOAD_count < 0"
+        assert self.backend.LOAD_byte >= 0, "LOAD_byte < 0"
+        assert self.backend.STORE_count >= 0, "STORE_count < 0"
+        assert self.backend.STORE_byte >= 0, "STORE_byte < 0"
+        assert self.backend.HIT_count >= 0, "HIT_count < 0"
+        assert self.backend.HIT_byte >= 0, "HIT_byte < 0"
+        assert self.backend.MISS_count >= 0, "MISS_count < 0"
+        assert self.backend.MISS_byte >= 0, "MISS_byte < 0"
         return {'name': self.name,
                 'LOAD_count': self.backend.LOAD_count,
                 'LOAD_byte': self.backend.LOAD_byte,
