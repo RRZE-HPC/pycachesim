@@ -329,6 +329,8 @@ class Cache(object):
         assert self.backend.HIT_byte >= 0, "HIT_byte < 0"
         assert self.backend.MISS_count >= 0, "MISS_count < 0"
         assert self.backend.MISS_byte >= 0, "MISS_byte < 0"
+        assert self.backend.EVICT_count >= 0, "EVICT_count < 0"
+        assert self.backend.EVICT_byte >= 0, "EVICT_byte < 0"
         return {'name': self.name,
                 'LOAD_count': self.backend.LOAD_count,
                 'LOAD_byte': self.backend.LOAD_byte,
@@ -337,7 +339,9 @@ class Cache(object):
                 'HIT_count': self.backend.HIT_count,
                 'HIT_byte': self.backend.HIT_byte,
                 'MISS_count': self.backend.MISS_count,
-                'MISS_byte': self.backend.MISS_byte}
+                'MISS_byte': self.backend.MISS_byte,
+                'MISS_count': self.backend.EVICT_count,
+                'MISS_byte': self.backend.EVICT_byte}
 
     def size(self):
         return self.sets*self.ways*self.cl_size
@@ -393,10 +397,12 @@ class MainMemory(object):
         return {'name': self.name,
                 'LOAD_count': self.last_level_load.MISS_count,
                 'LOAD_byte': self.last_level_load.MISS_byte,
-                'STORE_count': self.last_level_store.STORE_count,
-                'STORE_byte': self.last_level_store.STORE_byte,
+                'STORE_count': self.last_level_store.EVICT_count,
+                'STORE_byte': self.last_level_store.EVICT_byte,
                 'HIT_count': self.last_level_load.MISS_count,
                 'HIT_byte': self.last_level_load.MISS_byte,
+                'EVICT_count': 0,
+                'EVICT_byte': 0,
                 'MISS_count': 0,
                 'MISS_byte': 0}
 

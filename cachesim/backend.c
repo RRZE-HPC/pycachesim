@@ -77,6 +77,7 @@ typedef struct Cache {
     struct stats STORE;
     struct stats HIT;
     struct stats MISS;
+    struct stats EVICT;
 
     int verbosity;
 } Cache;
@@ -143,6 +144,10 @@ static PyMemberDef Cache_members[] = {
      "number of misses"},
     {"MISS_byte", T_UINT, offsetof(Cache, MISS.byte), 0,
      "number of bytes missed"},
+    {"EVICT_count", T_UINT, offsetof(Cache, EVICT.count), 0,
+     "number of evicts"},
+    {"EVICT_byte", T_UINT, offsetof(Cache, EVICT.byte), 0,
+     "number of bytes evicted"},
     {"verbosity", T_INT, offsetof(Cache, verbosity), 0,
      "verbosity level of output"},
     {NULL}  /* Sentinel */
@@ -274,9 +279,22 @@ static int Cache__inject(Cache* self, cache_entry* entry) {
     // Replace other cacheline according to replacement strategy (using placement order as state)
     self->placement[set_id*self->ways+replace_idx] = *entry;
 
+    if(self->verbosity >= 3) {
+        PySys_WriteStdout(
+            "%s REPLACED cl_id=%i invalid=%i dirty=%i\n",
+            self->name, replace_entry.cl_id, replace_entry.invalid, replace_entry.dirty);
+    }
+
     // write-back: check for dirty bit of replaced and inform next lower level of store
     if(self->write_back == 1) {
         if(replace_entry.invalid == 0 && replace_entry.dirty == 1) {
+            self->EVICT.count++;
+            self->EVICT.byte += self->cl_size;
+            if(self->verbosity >= 3) {
+                PySys_WriteStdout(
+                    "%s EVICT cl_id=%i\n",
+                    self->name, replace_entry.cl_id, replace_entry.invalid, replace_entry.dirty);
+            }
             if(self->store_to != NULL) {
                 int non_temporal = 0; // default for non write-combining caches
 
@@ -329,7 +347,7 @@ static int Cache__load(Cache* self, addr_range range) {
     unsigned int last_cl_id = Cache__get_cacheline_id(self, range.addr+range.length-1);
     for(unsigned int cl_id=Cache__get_cacheline_id(self, range.addr); cl_id<=last_cl_id; cl_id++) {
         unsigned int set_id = Cache__get_set_id(self, cl_id);
-        if(self->verbosity >= 1) {
+        if(self->verbosity >= 4) {
             PySys_WriteStdout(
                 "%s LOAD=%i addr=%i length=%i cl_id=%i set_id=%i\n",
                 self->name, self->LOAD.count, range.addr, range.length, cl_id, set_id);
@@ -342,9 +360,9 @@ static int Cache__load(Cache* self, addr_range range) {
             self->HIT.count++;
             // We only add actual bytes that were requested to hit.byte
             self->HIT.byte += self->cl_size < range.length ? self->cl_size : range.length;
-            if(self->verbosity >= 1) {
-                PySys_WriteStdout("HIT self->LOAD=%i addr=%i cl_id=%i set_id=%i\n",
-                                  self->LOAD.count, range.addr, cl_id, set_id);
+            if(self->verbosity >= 3) {
+                PySys_WriteStdout("%s HIT self->LOAD=%i addr=%i cl_id=%i set_id=%i\n",
+                                  self->name, self->LOAD.count, range.addr, cl_id, set_id);
             }
 
             cache_entry entry = self->placement[set_id*self->ways+location];
@@ -392,7 +410,8 @@ static int Cache__load(Cache* self, addr_range range) {
         // We only add actual bytes that were requested to miss.byte
         self->MISS.byte += self->cl_size < range.length ? self->cl_size : range.length;
         if(self->verbosity >= 2) {
-            PySys_WriteStdout("CACHED [%i", self->placement[set_id*self->ways].cl_id);
+            PySys_WriteStdout("%s CACHED [%i",
+                              self->name, self->placement[set_id*self->ways].cl_id);
             for(int i=1; i<self->ways; i++) {
                 PySys_WriteStdout(", %i", self->placement[set_id*self->ways+i].cl_id);
             }
@@ -437,7 +456,7 @@ static void Cache__store(Cache* self, addr_range range, int non_temporal) {
     for(unsigned int cl_id=Cache__get_cacheline_id(self, range.addr); cl_id<=last_cl_id; cl_id++) {
         unsigned int set_id = Cache__get_set_id(self, cl_id);
         int location = Cache__get_location(self, cl_id, set_id);
-        if(self->verbosity >= 1) {
+        if(self->verbosity >= 2) {
             PySys_WriteStdout("%s STORE=%i NT=%i addr=%i length=%i cl_id=%i sets=%i location=%i\n",
                               self->name, self->LOAD.count, non_temporal, range.addr, range.length,
                               cl_id, self->sets, location);
