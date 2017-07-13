@@ -443,7 +443,7 @@ class TestHighlevel(unittest.TestCase):
         elements_in_cache = l2.size()//element_size
         kernel_height = 3
         matrix_width = elements_in_cache // kernel_height // 2  # TODO check other sizes
-        matrix_height = 100 # needs to be large enough for evictions of stores to happen
+        matrix_height = 1000 # needs to be large enough for evictions of stores to happen
 
         # Warm up:
         offsets = []
