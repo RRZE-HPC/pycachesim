@@ -752,7 +752,16 @@ static PyObject* Cache_force_write_back(Cache* self) {
     // PySys_WriteStdout("%s force_write_back\n", self->name);
     for(int i=0; i<self->ways*self->sets; i++) {
         // PySys_WriteStdout("%i inv=%i dirty=%i\n", i, self->placement[i].invalid, self->placement[i].dirty);
+        // TODO merge with Cache__inject (last section)?
         if(self->placement[i].invalid == 0 && self->placement[i].dirty == 1) {
+            self->EVICT.count++;
+            self->EVICT.byte += self->cl_size;
+            if(self->verbosity >= 3) {
+                PySys_WriteStdout(
+                    "%s EVICT cl_id=%i\n",
+                    self->name, self->placement[i].cl_id,
+                    self->placement[i].invalid, self->placement[i].dirty);
+            }
             if(self->store_to != NULL) {
                 // Found dirty line, initiate write-back:
                 // PySys_WriteStdout("%s dirty_line cl_id=%i write_combining=%i\n", self->name, self->placement[i].cl_id, self->write_combining);
