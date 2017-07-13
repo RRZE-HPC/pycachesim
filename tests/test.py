@@ -260,8 +260,15 @@ class TestHighlevel(unittest.TestCase):
                          (y_base+i)*8,
                          (y_base+i+1)*8, (y_base+i+heat_N)*8])
         mh.reset_stats()
+        #l1.backend.verbosity = 3
+        #l2.backend.verbosity = 3
+        #l3.backend.verbosity = 3
+        #N = 128
         l = warmup_l
         for i in range(N):
+            #if i % 8 == 0:
+            #    print(i)
+            #    pprint(list(mh.stats()))
             mh.store((F_base+l*s+i)*8)
             mh.load([(y_base+i-heat_N)*8, (y_base+i-1)*8,
                      (y_base+i)*8,
@@ -436,8 +443,7 @@ class TestHighlevel(unittest.TestCase):
         elements_in_cache = l2.size()//element_size
         kernel_height = 3
         matrix_width = elements_in_cache // kernel_height // 2  # TODO check other sizes
-        matrix_height = 10000 # needs to be large enough for evictions of stores to happen
-        print(matrix_width, matrix_height, element_size)
+        matrix_height = 100 # needs to be large enough for evictions of stores to happen
 
         # Warm up:
         offsets = []
