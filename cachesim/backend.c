@@ -799,11 +799,13 @@ static PyObject* Cache_reset_stats(Cache* self) {
     self->STORE.count = 0;
     self->HIT.count = 0;
     self->MISS.count = 0;
+    self->EVICT.count = 0;
 
     self->LOAD.byte = 0;
     self->STORE.byte = 0;
     self->HIT.byte = 0;
     self->MISS.byte = 0;
+    self->EVICT.byte = 0;
 
     // self->LOAD.cl = 0;
     // self->STORE.cl = 0;
