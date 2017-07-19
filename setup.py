@@ -1,8 +1,11 @@
+#!/usr/bin/env python
 from __future__ import absolute_import
+
 from setuptools.extension import Extension
 from setuptools import setup, find_packages  # Always prefer setuptools over distutils
 from codecs import open  # To use a consistent encoding
 from os import path
+import os, io, re
 
 here = path.abspath(path.dirname(__file__))
 
@@ -10,13 +13,33 @@ here = path.abspath(path.dirname(__file__))
 with open(path.join(here, 'README.rst'), encoding='utf-8') as f:
     long_description = f.read()
 
+
+# Stolen from pip
+def read(*names, **kwargs):
+    with io.open(
+        os.path.join(os.path.dirname(__file__), *names),
+        encoding=kwargs.get("encoding", "utf8")
+    ) as fp:
+        return fp.read()
+
+
+# Stolen from pip
+def find_version(*file_paths):
+    version_file = read(*file_paths)
+    version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]",
+                              version_file, re.M)
+    if version_match:
+        return version_match.group(1)
+    raise RuntimeError("Unable to find version string.")
+
+
 setup(
     name='pycachesim',
 
     # Versions should comply with PEP440.  For a discussion on single-sourcing
     # the version across setup.py and the project code, see
     # https://packaging.python.org/en/latest/single_source_version.html
-    version='0.1.5',
+    version=find_version('cachesim', '__init__.py'),
 
     description='Python Cache Hierarchy Simulator',
     long_description=long_description,
