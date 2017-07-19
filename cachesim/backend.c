@@ -509,9 +509,12 @@ static void Cache__store(Cache* self, addr_range range, int non_temporal) {
             // Store to lower cachelevel
             // TODO use Cache__inject
             if(self->store_to != NULL) {
+                addr_range store_range = Cache__get_range_from_cl_id_and_range(self, cl_id, range);
+                self->EVICT.count++;
+                self->EVICT.byte += store_range.length;
                 Py_INCREF(self->store_to);
                 Cache__store((Cache*)(self->store_to),
-                             Cache__get_range_from_cl_id_and_range(self, cl_id, range),
+                             store_range,
                              non_temporal);
                 Py_DECREF(self->store_to);
             } // else last-level-cache

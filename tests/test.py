@@ -88,6 +88,9 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l1.STORE_count, 0)
         self.assertEqual(l2.STORE_count, 0)
         self.assertEqual(l3.STORE_count, 0)
+        self.assertEqual(l1.EVICT_count, 0)
+        self.assertEqual(l2.EVICT_count, 0)
+        self.assertEqual(l3.EVICT_count, 0)
         self.assertEqual(l2.LOAD_count, 0)
         self.assertEqual(l3.LOAD_count, 0)
 
@@ -105,6 +108,9 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l1.STORE_count, 1)
         self.assertEqual(l2.STORE_count, length//64)
         self.assertEqual(l3.STORE_count, length//64)
+        self.assertEqual(l1.EVICT_count, length//64)
+        self.assertEqual(l2.EVICT_count, length//64)
+        self.assertEqual(l3.EVICT_count, length//64)
 
     def test_large_store_write_allocate(self):
         mh, l1, l2, l3, mem, cacheline_size = self._get_SandyEP_caches()
@@ -120,6 +126,9 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l1.STORE_count, length)
         self.assertEqual(l2.STORE_count, length//64)
         self.assertEqual(l3.STORE_count, length//64)
+        self.assertEqual(l1.EVICT_count, length//64)
+        self.assertEqual(l2.EVICT_count, length//64)
+        self.assertEqual(l3.EVICT_count, length//64)
 
     def test_large_fill_iter(self):
         mh, l1, l2, l3, mem, cacheline_size = self._get_SandyEP_caches()
@@ -143,6 +152,10 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l2.STORE_count, 0)
         self.assertEqual(l3.STORE_count, 0)
         self.assertEqual(mem.STORE_count, 0)
+        self.assertEqual(l1.EVICT_count, 0)
+        self.assertEqual(l2.EVICT_count, 0)
+        self.assertEqual(l3.EVICT_count, 0)
+        self.assertEqual(mem.EVICT_count, 0)
 
         mh.reset_stats()
         mh.load(range(0, 256*1024))
@@ -173,6 +186,10 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l2.STORE_count, 0)
         self.assertEqual(l3.STORE_count, 0)
         self.assertEqual(mem.STORE_count, 0)
+        self.assertEqual(l1.EVICT_count, 0)  # nothing got evicted from L1
+        self.assertEqual(l2.EVICT_count, 0)
+        self.assertEqual(l3.EVICT_count, 0)
+        self.assertEqual(mem.EVICT_count, 0)
 
     def test_cached_store_l2_full(self):
         mh, l1, l2, l3, mem, cacheline_size = self._get_SandyEP_caches()
@@ -187,9 +204,12 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(mem.LOAD_count, 0)
         # All stores hit L1
         self.assertEqual(l1.STORE_count, 200*1024)
+        self.assertEqual(l1.EVICT_count, (200-32)*1024//64)
         # ... and most get evicted to L2.
         self.assertEqual(l2.STORE_count, (200-32)*1024//64)
+        self.assertEqual(l2.EVICT_count, 0)
         self.assertEqual(l3.STORE_count, 0)
+        self.assertEqual(l3.EVICT_count, 0)
         self.assertEqual(mem.STORE_count, 0)
 
         mh.force_write_back()
@@ -201,12 +221,16 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(mem.LOAD_count, 0)
         # All stores hit L1
         self.assertEqual(l1.STORE_count, 200*1024)
+        self.assertEqual(l1.EVICT_count, 200*1024//64)
         # ... and cache-lines get evicted to L2
         self.assertEqual(l2.STORE_count, 200*1024//64)
+        self.assertEqual(l2.EVICT_count, 200*1024//64)
         # ... and cache-lines get evicted to L3
         self.assertEqual(l3.STORE_count, 200*1024//64)
+        self.assertEqual(l3.EVICT_count, 200*1024//64)
         # ... and cache-lines get evicted to MEM.
         self.assertEqual(mem.STORE_count, 200*1024//64)
+        self.assertEqual(mem.EVICT_count, 0)
 
     def test_cached_store(self):
         mh, l1, l2, l3, mem, cacheline_size = self._get_SandyEP_caches()
@@ -223,6 +247,10 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l2.STORE_count, 0)
         self.assertEqual(l3.STORE_count, 0)
         self.assertEqual(mem.STORE_count, 0)
+        self.assertEqual(l1.EVICT_count, 0)   # nothing go evicted at that point
+        self.assertEqual(l2.EVICT_count, 0)
+        self.assertEqual(l3.EVICT_count, 0)
+        self.assertEqual(mem.EVICT_count, 0)
 
         mh.force_write_back()
         # After a full write-back
@@ -233,12 +261,16 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(mem.LOAD_count, 0)
         # All stores hit L1
         self.assertEqual(l1.STORE_count, 1024)
+        self.assertEqual(l1.EVICT_count, 1024//64)
         # ... and cache-lines get evicted to L2
         self.assertEqual(l2.STORE_count, 1024//64)
+        self.assertEqual(l2.EVICT_count, 1024//64)
         # ... and cache-lines get evicted to L3
         self.assertEqual(l3.STORE_count, 1024//64)
+        self.assertEqual(l3.EVICT_count, 1024//64)
         # ... and cache-lines get evicted to MEM.
         self.assertEqual(mem.STORE_count, 1024//64)
+        self.assertEqual(mem.EVICT_count, 0)
 
     def test_irk_heat(self):
         mh, l1, l2, l3, mem, cacheline_size = self._get_SandyEP_caches()
@@ -280,12 +312,16 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(mem.LOAD_count, 0)
         # All stores hit L1
         self.assertEqual(l1.STORE_count, N)
+        self.assertEqual(l1.EVICT_count, (N*8)//64 + 3)  # FIXME why +3?
         # ... and cache-lines get evicted to L2
         self.assertEqual(l2.STORE_count, (N*8)//64 + 3)  # FIXME why +3?
+        self.assertEqual(l2.EVICT_count, (N*8)//64)
         # ... and cache-lines get evicted to L3
         self.assertEqual(l3.STORE_count, (N*8)//64)
+        self.assertEqual(l3.EVICT_count, 0)
         # ... and every thing is already cached in L3.
         self.assertEqual(mem.STORE_count, 0)
+        self.assertEqual(mem.EVICT_count, 0)
 
     def _build_2d5pt_offset(self, i, j, matrix_width, matrix_height, element_size=8):
         return (# Loads:
@@ -350,21 +386,26 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l1.MISS_byte, 1*element_size + 1*cacheline_size)
         self.assertEqual(l1.STORE_count, elements_per_cl)
         self.assertEqual(l1.STORE_byte, cacheline_size)
+        self.assertEqual(l1.EVICT_count, 1)
+        self.assertEqual(l1.EVICT_byte, cacheline_size)
 
         self.assertEqual(l2.LOAD_count, 2)
         self.assertEqual(l2.HIT_count, 0)
         self.assertEqual(l2.MISS_count, 2)
         self.assertEqual(l2.STORE_count, 1)
+        self.assertEqual(l2.EVICT_count, 1)
 
         self.assertEqual(l3.LOAD_count, 2)
         self.assertEqual(l3.HIT_count, 0)
         self.assertEqual(l3.MISS_count, 2)
         self.assertEqual(l3.STORE_count, 1)
+        self.assertEqual(l3.EVICT_count, 1)
 
         self.assertEqual(mem.LOAD_count, 2)
         self.assertEqual(mem.HIT_count, 2)
         self.assertEqual(mem.MISS_count, 0)
         self.assertEqual(mem.STORE_count, 1)
+        self.assertEqual(mem.EVICT_count, 0)
 
     def test_2d5pt_L2_layerconditions(self):
         mh, l1, l2, l3, mem, cacheline_size = self._get_SandyEP_caches()
@@ -413,6 +454,8 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l1.MISS_byte, 3*element_size + cacheline_size)
         self.assertEqual(l1.STORE_count, elements_per_cl)
         self.assertEqual(l1.STORE_byte, cacheline_size)
+        self.assertEqual(l1.EVICT_count, 1)
+        self.assertEqual(l1.EVICT_byte, cacheline_size)
 
         self.assertEqual(l2.LOAD_count, 4)
         self.assertEqual(l2.LOAD_byte, 4*cacheline_size)
@@ -422,16 +465,20 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l2.MISS_byte, 2*cacheline_size)
         self.assertEqual(l2.STORE_count, 1)
         self.assertEqual(l2.STORE_byte, cacheline_size)
+        self.assertEqual(l2.EVICT_count, 1)
+        self.assertEqual(l2.EVICT_byte, cacheline_size)
 
         self.assertEqual(l3.LOAD_count, 2)
         self.assertEqual(l3.HIT_count, 0)
         self.assertEqual(l3.MISS_count, 2)
         self.assertEqual(l3.STORE_count, 1)
+        self.assertEqual(l3.EVICT_count, 1)
 
         self.assertEqual(mem.LOAD_count, 2)
         self.assertEqual(mem.HIT_count, 2)
         self.assertEqual(mem.MISS_count, 0)
         self.assertEqual(mem.STORE_count, 1)
+        self.assertEqual(mem.EVICT_count, 0)
 
     def test_2d5pt_L2_layerconditions_loadstore(self):
         mh, l1, l2, l3, mem, cacheline_size = self._get_SandyEP_caches()
@@ -481,21 +528,26 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l1.MISS_byte, 3*element_size + cacheline_size)
         self.assertEqual(l1.STORE_count, elements_per_cl)
         self.assertEqual(l1.STORE_byte, cacheline_size)
+        self.assertEqual(l1.EVICT_count, 1)
+        self.assertEqual(l1.EVICT_byte, cacheline_size)
 
         self.assertEqual(l2.LOAD_count, 4)
         self.assertEqual(l2.HIT_count, 2)
         self.assertEqual(l2.MISS_count, 2)
         self.assertEqual(l2.STORE_count, 1)
+        self.assertEqual(l2.EVICT_count, 1)
 
         self.assertEqual(l3.LOAD_count, 2)
         self.assertEqual(l3.HIT_count, 0)
         self.assertEqual(l3.MISS_count, 2)
         self.assertEqual(l3.STORE_count, 1)
+        self.assertEqual(l3.EVICT_count, 1)
 
         self.assertEqual(mem.LOAD_count, 2)
         self.assertEqual(mem.HIT_count, 2)
         self.assertEqual(mem.MISS_count, 0)
         self.assertEqual(mem.STORE_count, 1)
+        self.assertEqual(mem.EVICT_count, 0)
 
     def _build_Bulldozer_caches(self):
         cacheline_size = 64
@@ -551,34 +603,38 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l1.MISS_count, iteration_size)
         self.assertEqual(l1.STORE_count, iteration_size)
         self.assertEqual(l1.STORE_byte, iteration_size*cacheline_size)
+        self.assertEqual(l1.EVICT_count, iteration_size)
+        self.assertEqual(l1.EVICT_byte, iteration_size*cacheline_size)
 
         self.assertEqual(wcc.LOAD_count, 0)
         self.assertEqual(wcc.HIT_count, 0)
         self.assertEqual(wcc.MISS_count, 0)
         self.assertEqual(wcc.STORE_count, iteration_size)
+        self.assertEqual(wcc.EVICT_count, iteration_size)
 
-        # TODO why -1 ?
         self.assertEqual(l2.LOAD_count, iteration_size)
         self.assertEqual(l2.HIT_count, 0)
         self.assertEqual(l2.MISS_count, iteration_size)
         self.assertEqual(l2.STORE_count, iteration_size)
+        self.assertEqual(l2.EVICT_count, iteration_size)
 
         self.assertEqual(l3.LOAD_count, iteration_size)
         self.assertEqual(l3.HIT_count, 0)
         self.assertEqual(l3.MISS_count, iteration_size)
         self.assertEqual(l3.STORE_count, iteration_size)
+        self.assertEqual(l3.EVICT_count, iteration_size)
 
         self.assertEqual(mem.LOAD_count, iteration_size)
         self.assertEqual(mem.HIT_count, iteration_size)
         self.assertEqual(mem.MISS_count, 0)
         self.assertEqual(mem.STORE_count, iteration_size)
+        self.assertEqual(mem.EVICT_count, 0)
 
     def test_write_combining(self):
         cs, l1, wcc, l2, l3, mem, cacheline_size = self._build_Bulldozer_caches()
         # STREAM copy one cacheline in byte chunks
         for i in range(0, cacheline_size):
             cs.store(i)
-
         cs.force_write_back()
 
         # write-combining should eliminate the write-allocate in L2
@@ -589,27 +645,35 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l1.MISS_count, 0)
         self.assertEqual(l1.STORE_count, cacheline_size)
         self.assertEqual(l1.STORE_byte, cacheline_size)
+        self.assertEqual(l1.EVICT_count, cacheline_size)
+        self.assertEqual(l1.EVICT_byte, cacheline_size)
 
         self.assertEqual(wcc.LOAD_count, 0)
         self.assertEqual(wcc.HIT_count, 0)
         self.assertEqual(wcc.MISS_count, 0)
         self.assertEqual(wcc.STORE_count, cacheline_size)
+        self.assertEqual(wcc.EVICT_count, 1)
 
         self.assertEqual(l2.LOAD_count, 0)
         self.assertEqual(l2.HIT_count, 0)
         self.assertEqual(l2.MISS_count, 0)
         self.assertEqual(l2.STORE_count, 1)
+        self.assertEqual(l2.STORE_count, 1)
+        self.assertEqual(l2.EVICT_count, 1)
         self.assertEqual(l2.STORE_byte, cacheline_size)
+        self.assertEqual(l2.EVICT_byte, cacheline_size)
 
         self.assertEqual(l3.LOAD_count, 0)
         self.assertEqual(l3.HIT_count, 0)
         self.assertEqual(l3.MISS_count, 0)
         self.assertEqual(l3.STORE_count, 1)
+        self.assertEqual(l3.EVICT_count, 1)
 
         self.assertEqual(mem.LOAD_count, 0)
         self.assertEqual(mem.HIT_count, 0)
         self.assertEqual(mem.MISS_count, 0)
         self.assertEqual(mem.STORE_count, 1)
+        self.assertEqual(mem.EVICT_count, 0)
 
     def test_from_dict(self):
         cs, caches, mem = CacheSimulator.from_dict({
