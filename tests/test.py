@@ -295,7 +295,7 @@ class TestHighlevel(unittest.TestCase):
         #l1.backend.verbosity = 3
         #l2.backend.verbosity = 3
         #l3.backend.verbosity = 3
-        #N = 128
+        
         l = warmup_l
         for i in range(N):
             #if i % 8 == 0:

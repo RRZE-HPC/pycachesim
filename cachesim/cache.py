@@ -7,13 +7,7 @@ from __future__ import division
 from __future__ import unicode_literals
 
 import sys
-import math
-from copy import deepcopy
-from collections import defaultdict, Iterable
-from functools import reduce
-import operator
-
-# from PIL import Image
+from collections import Iterable
 
 from cachesim import backend
 
@@ -350,7 +344,9 @@ class Cache(object):
         return self.sets*self.ways*self.cl_size
 
     def __repr__(self):
-        return 'Cache(name={!r}, sets={!r}, ways={!r}, cl_size={!r}, replacement_policy={!r}, write_back={!r}, write_allocate={!r}, write_combining={!r}, load_from={!r}, store_to={!r}, victims_to={!r}, swap_on_load={!r}))'.format(
+        return ('Cache(name={!r}, sets={!r}, ways={!r}, cl_size={!r}, replacement_policy={!r}, '
+               'write_back={!r}, write_allocate={!r}, write_combining={!r}, load_from={!r}, '
+               'store_to={!r}, victims_to={!r}, swap_on_load={!r}))').format(
             self.name, self.sets, self.ways, self.cl_size, self.replacement_policy, self.write_back,
             self.write_allocate, self.write_combining, self.load_from, self.store_to,
             self.victims_to, self.swap_on_load)
