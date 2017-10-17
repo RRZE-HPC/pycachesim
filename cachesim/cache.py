@@ -1,7 +1,5 @@
 #!/usr/bin/env python
-'''
-Memory Hierarchy Simulator
-'''
+"""Hierarchical Cache Simulator."""
 from __future__ import print_function
 from __future__ import division
 from __future__ import unicode_literals
@@ -16,21 +14,24 @@ if sys.version_info[0] < 3:
 
 
 def is_power2(num):
+    """Return True if num is a power of two."""
     return num > 0 and (num & (num - 1)) == 0
 
 
 class CacheSimulator(object):
-    '''High-level interface to the Cache Simulator.
+    """
+    High-level interface to the Cache Simulator.
 
     This is the only class that needs to be directly interfaced to.
-    '''
+    """
+
     def __init__(self, first_level, main_memory):
-        '''
-        Creates the interface that we interact with.
+        """
+        Create interface to interact with cache simulator backend.
 
         :param first_level: first cache level object.
         :param main_memory: main memory object.
-        '''
+        """
         assert isinstance(first_level, Cache), \
             "first_level needs to be a Cache object."
         assert isinstance(main_memory, MainMemory), \
@@ -44,7 +45,7 @@ class CacheSimulator(object):
 
     @classmethod
     def from_dict(cls, d):
-        '''Creates cache hierarchy from dictionary.'''
+        """Create cache hierarchy from dictionary."""
         main_memory = MainMemory()
         caches = {}
         first_level = None
@@ -54,7 +55,7 @@ class CacheSimulator(object):
         # First pass, create all named caches and collect references
         for name, conf in d.items():
             caches[name] = Cache(
-                name=name, **{k:v for k,v in conf.items() if k not in ['store_to', 'load_from']})
+                name=name, **{k: v for k, v in conf.items() if k not in ['store_to', 'load_from']})
             if 'store_to' in conf:
                 referred_caches.add(conf['store_to'])
             if 'load_from' in conf:
@@ -86,25 +87,28 @@ class CacheSimulator(object):
         return cls(first_level, main_memory), caches, main_memory
 
     def reset_stats(self):
-        '''Resets statistics in all cache levels.
+        """
+        Reset statistics in all cache levels.
 
         Use this after warming up the caches to get a steady state result.
-        '''
+        """
         for c in self.levels(with_mem=False):
             c.reset_stats()
 
     def force_write_back(self):
-        '''Write all pending dirty lines back.'''
+        """Write all pending dirty lines back."""
         # force_write_back() is acting recursive by it self, but multiple write-back first level
         # caches are imaginable. Better safe than sorry:
         for c in self.levels(with_mem=False):
             c.force_write_back()
 
     def load(self, addr, length=1):
-        '''Loads one or more addresses.
+        """
+        Load one or more addresses.
 
-        if lengh is given, all address from addr until addr+length (exclusive) are loaded
-        '''
+        :param length: All address from addr until addr+length (exclusive) are
+                       loaded (default: 1)
+        """
         if addr is None:
             return
         elif not isinstance(addr, Iterable):
@@ -113,6 +117,12 @@ class CacheSimulator(object):
             self.first_level.iterload(addr, length=length)
 
     def store(self, addr, length=1, non_temporal=False):
+        """
+        Store one or more adresses.
+
+        :param length: All address from addr until addr+length (exclusive) are
+                       stored (default: 1)
+        """
         if non_temporal:
             raise ValueError("non_temporal stores are not yet supported")
 
@@ -124,28 +134,28 @@ class CacheSimulator(object):
             self.first_level.iterstore(addr, length=length)
 
     def loadstore(self, addrs, length=1):
-        '''Takes load and store address to be evaluated in order.
+        """
+        Load and store address in order given.
 
         :param addrs: iteratable of address tuples: [(loads, stores), ...]
-        :param length: will load and store all bytes between addr and addr+length (for each address)
-        '''
-
+        :param length: will load and store all bytes between addr and
+                       addr+length (for each address)
+        """
         if not isinstance(addrs, Iterable):
             raise ValueError("addr must be iteratable")
 
         self.first_level.loadstore(addrs, length=length)
 
     def stats(self):
-        '''Collects all stats from all cache levels.'''
+        """Collect all stats from all cache levels."""
         for c in self.levels():
             yield c.stats()
 
     def print_stats(self, header=True, file=sys.stdout):
-        '''Pretty print stats table'''
+        """Pretty print stats table."""
         if header:
             print("CACHE {:*^18} {:*^18} {:*^18} {:*^18} {:*^18}".format(
-                      "HIT", "MISS", "LOAD", "STORE", "EVICT"),
-                  file=file)
+                "HIT", "MISS", "LOAD", "STORE", "EVICT"), file=file)
         for s in self.stats():
             print("{name:>5} {HIT_count:>6} ({HIT_byte:>8}B) {MISS_count:>6} ({MISS_byte:>8}B) "
                   "{LOAD_count:>6} ({LOAD_byte:>8}B) {STORE_count:>6} "
@@ -154,6 +164,7 @@ class CacheSimulator(object):
                   file=file)
 
     def levels(self, with_mem=True):
+        """Return cache levels, optionally including main memory."""
         p = self.first_level
         while p is not None:
             yield p
@@ -169,8 +180,10 @@ class CacheSimulator(object):
             yield self.main_memory
 
     # def draw_array(self, start, width, height, block=1):
+    #     """Return image representation of cache states."""
     #     length = (width*height)//block
-    #     canvas = Image.new("RGB", (width, height)) # FIXME: switch to palette "P" with ImagePalette
+    #     canvas = Image.new("RGB", (width, height))
+    #     # FIXME: switch to palette "P" with ImagePalette
     #
     #     for h in range(height):
     #         for w in range(width):
@@ -191,10 +204,13 @@ class CacheSimulator(object):
     #     return canvas
 
     def __repr__(self):
+        """Return string representation of object."""
         return 'CacheSimulator({!r}, {!r})'.format(self.first_level, self.main_memory)
 
 
 class Cache(object):
+    """Cache level object."""
+
     replacement_policy_enum = {"FIFO": 0, "LRU": 1, "MRU": 2, "RR": 3}
 
     def __init__(self, name, sets, ways, cl_size,
@@ -205,33 +221,41 @@ class Cache(object):
                  subblock_size=None,
                  load_from=None, store_to=None, victims_to=None,
                  swap_on_load=False):
-        '''Creates one cache level out of given configuration.
+        """Create one cache level out of given configuration.
 
         :param sets: total number of sets, if 1 cache will be full-associative
         :param ways: total number of ways, if 1 cache will be direct mapped
         :param cl_size: number of bytes that can be addressed individually
         :param replacement_policy: FIFO, LRU (default), MRU or RR
-        :param write_back: if true (default), write back will be done on evict. Otherwise 
-                           write-through is used
-        :param write_allocate: if true (default), a load will be issued on a write miss
-        :param write_combining: if true, this cache will combine writes and issue them on evicts 
-                                (default is false)
-        :param subblock_size: the minimum blocksize that write-combining can handle
-        :param load_from: the cache level to forward a load in case of a load miss or
-                          write-allocate, if None, assumed to be main memory
-        :param store_to: the cache level to forward a store to in case of eviction of dirty lines,
-                         if None, assumed to be main memory
-        :param victims_to: the cache level to forward any evicted lines to (dirty or not)
-        :param swap_on_load: if true, lines will be swaped between this and the higher cache level
-                             (default is false). Currently not supported.
-        :param parent: the cache where misses are forwarded to, if None it is a last level cache
+        :param write_back: if true (default), write back will be done on evict.
+                           Otherwise write-through is used
+        :param write_allocate: if true (default), a load will be issued on a
+                               write miss
+        :param write_combining: if true, this cache will combine writes and
+                                issue them on evicts(default is false)
+        :param subblock_size: the minimum blocksize that write-combining can
+                              handle
+        :param load_from: the cache level to forward a load in case of a load
+                          miss or write-allocate, if None, assumed to be main
+                          memory
+        :param store_to: the cache level to forward a store to in case of
+                         eviction of dirty lines, if None, assumed to be main
+                         memory
+        :param victims_to: the cache level to forward any evicted lines to
+                           (dirty or not)
+        :param swap_on_load: if true, lines will be swaped between this and the
+                             higher cache level (default is false).
+                             Currently not supported.
+        :param parent: the cache where misses are forwarded to, if None it is a
+                       last level cache
 
         The total cache size is the product of sets*ways*cl_size.
         Internally all addresses are converted to cacheline indices.
 
-        Instantization has to happen from last level cache to first level cache, since each
-        subsequent level requires a reference of the other level.
-        '''
+        Instantization has to happen from last level cache to first level
+        cache, since each subsequent level requires a reference of the other
+        level.
+        """
         assert load_from is None or isinstance(load_from, Cache), \
             "load_from needs to be None or a Cache object."
         assert store_to is None or isinstance(store_to, Cache), \
@@ -246,7 +270,7 @@ class Cache(object):
             "cl_size may only increase towards main memory."
         assert is_power2(ways), "ways needs to be a power of 2"
         assert replacement_policy in self.replacement_policy_enum, \
-            "Unsupported replacement strategy, we only support: "+ \
+            "Unsupported replacement strategy, we only support: " + \
             ', '.join(self.replacement_policy_enum)
         assert (write_back, write_allocate) in [(False, False), (True, True), (True, False)], \
             "Unsupported write policy, we only support write-through and non-write-allocate, " \
@@ -280,21 +304,21 @@ class Cache(object):
             swap_on_load=swap_on_load)
 
     def _get_backend(self, cache):
-        '''Returns backend of *cache* unless *cache* is None, then None is returned.'''
+        """Return backend of *cache* unless *cache* is None, then None is returned."""
         if cache is not None:
             return cache.backend
         return None
 
     def get_cl_start(self, addr):
-        '''Returns first address belonging to the same cacheline as *addr*'''
+        """Return first address belonging to the same cacheline as *addr*."""
         return addr >> self.backend.cl_bits << self.backend.cl_bits
 
     def get_cl_end(self, addr):
-        '''Returns last address belonging to the same cacheline as *addr*'''
+        """Return last address belonging to the same cacheline as *addr*."""
         return self.get_cl_start(addr) + self.backend.cl_size - 1
 
     def set_load_from(self, load_from):
-        '''Updates load_from in Cache and backend'''
+        """Update load_from in Cache and backend."""
         assert load_from is None or isinstance(load_from, Cache), \
             "load_from needs to be None or a Cache object."
         assert load_from is None or load_from.cl_size <= self.cl_size, \
@@ -303,7 +327,7 @@ class Cache(object):
         self.backend.load_from = load_from.backend
 
     def set_store_to(self, store_to):
-        '''Updates store_to in Cache and backend'''
+        """Update store_to in Cache and backend."""
         assert store_to is None or isinstance(store_to, Cache), \
             "store_to needs to be None or a Cache object."
         assert store_to is None or store_to.cl_size <= self.cl_size, \
@@ -312,12 +336,14 @@ class Cache(object):
         self.backend.store_to = store_to.backend
 
     def __getattr__(self, key):
+        """Return cache attribute, preferably to backend."""
         if hasattr(self, "backend"):
             return getattr(self.backend, key)
         else:
             raise AttributeError("'{}' object has no attribute '{}'".format(self.__class__, key))
 
     def stats(self):
+        """Return dictionay with all stats at this level."""
         assert self.backend.LOAD_count >= 0, "LOAD_count < 0"
         assert self.backend.LOAD_byte >= 0, "LOAD_byte < 0"
         assert self.backend.STORE_count >= 0, "STORE_count < 0"
@@ -341,20 +367,24 @@ class Cache(object):
                 'EVICT_byte': self.backend.EVICT_byte}
 
     def size(self):
+        """Return total cache size."""
         return self.sets*self.ways*self.cl_size
 
     def __repr__(self):
+        """Return string representation of object."""
         return ('Cache(name={!r}, sets={!r}, ways={!r}, cl_size={!r}, replacement_policy={!r}, '
-               'write_back={!r}, write_allocate={!r}, write_combining={!r}, load_from={!r}, '
-               'store_to={!r}, victims_to={!r}, swap_on_load={!r}))').format(
+                'write_back={!r}, write_allocate={!r}, write_combining={!r}, load_from={!r}, '
+                'store_to={!r}, victims_to={!r}, swap_on_load={!r}))').format(
             self.name, self.sets, self.ways, self.cl_size, self.replacement_policy, self.write_back,
             self.write_allocate, self.write_combining, self.load_from, self.store_to,
             self.victims_to, self.swap_on_load)
 
 
 class MainMemory(object):
+    """Main memory object. Last level of cache hierarchy, able to hit on all requests."""
+
     def __init__(self, name=None, last_level_load=None, last_level_store=None):
-        '''Creates one cache level out of given configuration.'''
+        """Create one cache level out of given configuration."""
         self.name = "MEM" if name is None else name
 
         if last_level_load is not None:
@@ -368,11 +398,13 @@ class MainMemory(object):
             self.last_level_store = None
 
     def reset_stats(self):
+        """Dummy, no stats need to be reset in main memory."""
         # since all stats in main memory are derived from the last level cache, there is nothing to
         # reset
         pass
 
     def load_to(self, last_level_load):
+        """Set level where to load from."""
         assert isinstance(last_level_load, Cache), \
             "last_level needs to be a Cache object."
         assert last_level_load.load_from is None, \
@@ -380,6 +412,7 @@ class MainMemory(object):
         self.last_level_load = last_level_load
 
     def store_from(self, last_level_store):
+        """Set level where to store to."""
         assert isinstance(last_level_store, Cache), \
             "last_level needs to be a Cache object."
         assert last_level_store.store_to is None, \
@@ -387,12 +420,14 @@ class MainMemory(object):
         self.last_level_store = last_level_store
 
     def __getattr__(self, key):
+        """Return cache attribute, preferably to backend."""
         try:
             return self.stats()[key]
         except KeyError:
             raise AttributeError
 
     def stats(self):
+        """Return dictionay with all stats at this level."""
         return {'name': self.name,
                 'LOAD_count': self.last_level_load.MISS_count,
                 'LOAD_byte': self.last_level_load.MISS_byte,
@@ -406,5 +441,6 @@ class MainMemory(object):
                 'MISS_byte': 0}
 
     def __repr__(self):
+        """Return string representation of object."""
         return 'MainMemory(last_level_load={!r}, last_level_store={!r})'.format(
             self.last_level_load, self.last_level_store)
