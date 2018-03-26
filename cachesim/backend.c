@@ -102,6 +102,8 @@ int isPowerOfTwo(unsigned int x) {
 }
 
 static PyMemberDef Cache_members[] = {
+    {"name", T_STRING, offsetof(Cache, name), 0,
+     "name of cache level"},
     {"sets", T_UINT, offsetof(Cache, sets), 0,
      "number of sets available"},
     {"ways", T_UINT, offsetof(Cache, ways), 0,
@@ -122,11 +124,11 @@ static PyMemberDef Cache_members[] = {
      "write allocate of cachlevel (0 is non-write-allocate, 1 is write-allocate)"},
     {"write_combining", T_INT, offsetof(Cache, write_combining), 0,
      "combine writes on this level, before passing them on"},
-    {"load_from", T_OBJECT_EX, offsetof(Cache, load_from), 0,
+    {"load_from", T_OBJECT, offsetof(Cache, load_from), 0,
      "load parent Cache object (cache level which is closer to main memory)"},
-    {"store_to", T_OBJECT_EX, offsetof(Cache, store_to), 0,
+    {"store_to", T_OBJECT, offsetof(Cache, store_to), 0,
      "store parent Cache object (cache level which is closer to main memory)"},
-    {"victims_to", T_OBJECT_EX, offsetof(Cache, victims_to), 0,
+    {"victims_to", T_OBJECT, offsetof(Cache, victims_to), 0,
      "Cache object where victims will be send to (closer to main memory, None if victims vanish)"},
     {"LOAD_count", T_UINT, offsetof(Cache, LOAD.count), 0,
      "number of loads performed"},
@@ -211,7 +213,7 @@ static void Cache__store(Cache* self, addr_range range, int non_temporal);
 
 static int Cache__inject(Cache* self, cache_entry* entry) {
     /*
-    Injects a cache entry into a cache and handles all sideeffects that might occure:
+    Injects a cache entry into a cache and handles all side effects that might occur:
      - choose replacement according to policy
      - reorder queues
      - inform victim caches
@@ -325,11 +327,16 @@ static int Cache__inject(Cache* self, cache_entry* entry) {
             } // else last-level-cache
         }
     }
-
-    // Deliver replaced cacheline to victim cache, if configured and valid
-    if(self->victims_to != NULL && replace_entry.invalid == 0) {
+    // Deliver replaced cacheline to victim cache, if configured, valid and neither dirty or non-write_back
+    // (if it were dirty, it would have been written to store_to if write_back is enabled)
+    if(self->victims_to != NULL && replace_entry.invalid == 0 && (replace_entry.dirty != 1 || self->write_back == 0)) {
+        Py_INCREF(self->victims_to);
         // Inject into victims_to
         Cache__inject((Cache*)self->victims_to, &replace_entry);
+        Py_DECREF(self->victims_to);
+        // Take care to include into evict stats
+        self->EVICT.count++;
+        self->EVICT.byte += self->cl_size;
     }
 
     return replace_idx;
@@ -424,8 +431,29 @@ static int Cache__load(Cache* self, addr_range range) {
         }
 
         // Load from lower cachelevel
-        // TODO also check victim cache, if available
-        if(self->load_from != NULL) {
+        // Check victim cache, if available
+        int victim_hit = 0;
+        if(self->victims_to != NULL) {
+            Py_INCREF(self->victims_to);
+            // check for hit in victim cache
+            unsigned int victim_set_id = Cache__get_set_id((Cache*)self->victims_to, cl_id);
+            int victim_location_victim = Cache__get_location((Cache*)self->victims_to, cl_id, victim_set_id);
+            if(victim_location_victim != -1) {
+                // hit in victim cache
+                if(self->verbosity >= 1) {
+                    PySys_WriteStdout("%s VICTIM HIT cl_id=%i\n", ((Cache*)self->victims_to)->name, cl_id);
+                }
+                // load data from victim cache
+                Cache__load((Cache*)self->victims_to, Cache__get_range_from_cl_id(self, cl_id));
+                // do NOT go onto load_from cache
+                victim_hit = 1;
+            } else if(self->verbosity >= 1) {
+                PySys_WriteStdout("%s VICTIM MISS cl_id=%i\n", ((Cache*)self->victims_to)->name, cl_id);
+            }
+            Py_DECREF(self->victims_to);
+        }
+        // If no hit in victim cache, or no victim cache available, go to next cache level
+        if(!victim_hit && self->load_from != NULL) {
             Py_INCREF(self->load_from);
             // TODO use replace_entry to inform other cache of swap (in case of exclusive caches)
             Cache__load((Cache*)self->load_from, Cache__get_range_from_cl_id(self, cl_id));
@@ -958,7 +986,7 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
         }
         tmp = self->victims_to;
         Py_INCREF(victims_to);
-        self->load_from = victims_to;
+        self->victims_to = victims_to;
         Py_XDECREF(tmp);
     } else {
         self->victims_to = NULL;

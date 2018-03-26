@@ -618,9 +618,9 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l2.STORE_count, iteration_size)
         self.assertEqual(l2.EVICT_count, iteration_size)
 
-        self.assertEqual(l3.LOAD_count, iteration_size)
-        self.assertEqual(l3.HIT_count, 0)
-        self.assertEqual(l3.MISS_count, iteration_size)
+        self.assertEqual(l3.LOAD_count, 0)
+        self.assertEqual(l3.HIT_count, l3.LOAD_count)
+        self.assertEqual(l3.MISS_count, 0)
         self.assertEqual(l3.STORE_count, iteration_size)
         self.assertEqual(l3.EVICT_count, iteration_size)
 
@@ -674,6 +674,96 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(mem.MISS_count, 0)
         self.assertEqual(mem.STORE_count, 1)
         self.assertEqual(mem.EVICT_count, 0)
+
+    def _build_Skylake_caches(self):
+        cacheline_size = 64
+
+        mem = MainMemory(name="MEM")
+        l3 = Cache(name="L3",
+                   # 20x1.375MB = 27.5MB, with 11-ways with unknown hash function, thus we use
+                   # 16-ways and select number of sets accordingly
+                   sets=28160, ways=16, cl_size=cacheline_size,
+                   replacement_policy="LRU",
+                   write_back=True, write_allocate=False,  # victim caches don't need write-allocate
+                   store_to=None, load_from=None, victims_to=None,
+                   swap_on_load=False)  # This is a victim cache, so exclusiveness is implicit
+        mem.store_from(l3)
+        l2 = Cache(name="L2",
+                   sets=1024, ways=16, cl_size=cacheline_size,  # 1MB
+                   replacement_policy="LRU",
+                   write_back=True, write_allocate=True,
+                   store_to=l3, load_from=None, victims_to=l3,
+                   swap_on_load=False)  # L2-L1 is inclusive
+        mem.load_to(l2)
+        l1 = Cache(name="L1",
+                   sets=64, ways=8, cl_size=cacheline_size,  # 32kB
+                   replacement_policy="LRU",
+                   write_back=False, write_allocate=False,
+                   store_to=l2, load_from=l2, victims_to=None,
+                   swap_on_load=False)  # inclusive/exclusive does not matter in first-level
+        cs = CacheSimulator(first_level=l1,
+                            main_memory=mem)
+
+        return cs, l1, l2, l3, mem, cacheline_size
+
+    def test_victim_cache(self):
+        cs, l1, l2, l3, mem, cacheline_size = self._build_Skylake_caches()
+
+        # Store (and load) sufficient data to fill L2 exactly
+        cs.store(0, cacheline_size)
+        cs.load(cacheline_size, l2.size()-cacheline_size)
+
+        self.assertEqual(l3.HIT_count, 0)
+        self.assertEqual(l3.LOAD_count, l3.HIT_count)
+        self.assertEqual(l3.MISS_count, 0)
+        self.assertEqual(l3.STORE_count, 0)
+        self.assertEqual(l3.EVICT_count, 0)
+        self.assertEqual(mem.LOAD_count, l2.size()//cacheline_size)
+        self.assertEqual(mem.HIT_count, l2.size()//cacheline_size)
+        self.assertEqual(mem.STORE_count, 0)
+        self.assertEqual(l2.EVICT_count, 0)
+        self.assertEqual(l2.STORE_count, 1)
+
+        # Beyond L2, we start spilling victims into L3
+        cs.load(l2.size(), l3.size() - l2.size())
+
+        self.assertEqual(l2.EVICT_count, l3.size()//cacheline_size - l2.size()//cacheline_size)
+        self.assertEqual(l2.EVICT_byte, l3.size() - l2.size())
+        self.assertEqual(l3.HIT_count, 0)
+        self.assertEqual(l3.LOAD_count, l3.HIT_count)
+        self.assertEqual(l3.MISS_count, 0)
+        self.assertEqual(l3.STORE_count, 1)  # dirty line has reached L3
+        self.assertEqual(l3.EVICT_count, 0)  # not yet evicted, because all data fits L3
+        self.assertEqual(mem.STORE_count, 0)
+
+        cs.reset_stats()
+
+        # Starting from the beginning, we should see all data coming from L3
+        cs.load(0, l2.size())
+
+        self.assertEqual(l2.EVICT_count, l2.size()//cacheline_size)
+        self.assertEqual(l2.EVICT_byte, l2.size())
+        self.assertEqual(l3.HIT_count, l2.size()//cacheline_size)
+        self.assertEqual(l3.LOAD_count, l3.HIT_count)
+        self.assertEqual(l3.MISS_count, 0)
+        self.assertEqual(l3.STORE_count, 0)
+        self.assertEqual(l3.EVICT_count, 0)
+        self.assertEqual(mem.LOAD_count, 0)
+        self.assertEqual(mem.STORE_count, 0)
+
+        cs.reset_stats()
+
+        # Loading completely new data, we should see evicts of dirty cachelines from L3
+        cs.load(l3.size(), l3.size())
+        
+        self.assertEqual(l3.HIT_count, 0)
+        self.assertEqual(l3.LOAD_count, 0)
+        self.assertEqual(l3.MISS_count, 0)
+        self.assertEqual(l3.STORE_count, 0)
+        self.assertEqual(l3.EVICT_count, 1)  # now the dirty line is evicted
+        self.assertEqual(mem.LOAD_count, l3.size()//cacheline_size)
+        self.assertEqual(mem.STORE_count, 1)
+
 
     def test_from_dict(self):
         cs, caches, mem = CacheSimulator.from_dict({

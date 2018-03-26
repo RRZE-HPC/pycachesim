@@ -60,6 +60,8 @@ class CacheSimulator(object):
                 referred_caches.add(conf['store_to'])
             if 'load_from' in conf:
                 referred_caches.add(conf['load_from'])
+            if 'victims_to' in conf:
+                referred_caches.add(conf['victims_to'])
 
         # Second pass, connect caches
         for name, conf in d.items():
@@ -67,6 +69,8 @@ class CacheSimulator(object):
                 caches[name].set_store_to(caches[conf['store_to']])
             if 'load_from' in conf and conf['load_from'] is not None:
                 caches[name].set_load_from(caches[conf['load_from']])
+            if 'victims_to' in conf and conf['victims_to'] is not None:
+                caches[name].set_victims_to(caches[conf['victims_to']])
 
         # Find first level (not target of any load_from or store_to)
         first_level = set(d.keys()) - referred_caches
@@ -203,9 +207,11 @@ class CacheSimulator(object):
     #
     #     return canvas
 
-    def __repr__(self):
+    def __repr__(self, recursion=True):
         """Return string representation of object."""
-        return 'CacheSimulator({!r}, {!r})'.format(self.first_level, self.main_memory)
+        first_level_repr = self.first_level.__repr__(recursion=recursion)
+        main_memory_repr = self.main_memory.__repr__(recursion=recursion)
+        return 'CacheSimulator({}, {})'.format(first_level_repr, main_memory_repr)
 
 
 class Cache(object):
@@ -337,7 +343,7 @@ class Cache(object):
 
     def __getattr__(self, key):
         """Return cache attribute, preferably to backend."""
-        if hasattr(self, "backend"):
+        if "backend" in self.__dict__:
             return getattr(self.backend, key)
         else:
             raise AttributeError("'{}' object has no attribute '{}'".format(self.__class__, key))
@@ -370,14 +376,22 @@ class Cache(object):
         """Return total cache size."""
         return self.sets*self.ways*self.cl_size
 
-    def __repr__(self):
+    def __repr__(self, recursion=False):
         """Return string representation of object."""
+        if recursion:
+            load_from_repr, store_to_repr, victims_to_repr = map(
+                lambda c: c.__repr__(recursion=True) if c is not None else 'None',
+                [self.load_from, self.store_to, self.victims_to])
+        else:
+            load_from_repr = self.load_from.name if self.load_from is not None else 'None'
+            store_to_repr = self.store_to.name if self.store_to is not None else 'None'
+            victims_to_repr = self.victims_to.name if self.victims_to is not None else 'None'
         return ('Cache(name={!r}, sets={!r}, ways={!r}, cl_size={!r}, replacement_policy={!r}, '
-                'write_back={!r}, write_allocate={!r}, write_combining={!r}, load_from={!r}, '
-                'store_to={!r}, victims_to={!r}, swap_on_load={!r}))').format(
-            self.name, self.sets, self.ways, self.cl_size, self.replacement_policy, self.write_back,
-            self.write_allocate, self.write_combining, self.load_from, self.store_to,
-            self.victims_to, self.swap_on_load)
+                'write_back={!r}, write_allocate={!r}, write_combining={!r}, load_from={}, '
+                'store_to={}, victims_to={}, swap_on_load={!r})').format(
+            self.name, self.sets, self.ways, self.cl_size, self.replacement_policy,
+            self.write_back, self.write_allocate, self.write_combining, load_from_repr,
+            store_to_repr, victims_to_repr, self.swap_on_load)
 
 
 class MainMemory(object):
@@ -428,19 +442,36 @@ class MainMemory(object):
 
     def stats(self):
         """Return dictionay with all stats at this level."""
+        load_count = self.last_level_load.MISS_count
+        load_byte = self.last_level_load.MISS_byte
+
+        if self.last_level_load.victims_to is not None:
+            # If there is a victim cache between last_level and memory, subtract all victim hits
+            load_count -= self.last_level_load.victims_to.HIT_count
+            load_byte -= self.last_level_load.victims_to.HIT_byte
+
         return {'name': self.name,
-                'LOAD_count': self.last_level_load.MISS_count,
-                'LOAD_byte': self.last_level_load.MISS_byte,
+                'LOAD_count': load_count,
+                'LOAD_byte': load_byte,
+                'HIT_count': load_count,
+                'HIT_byte': load_byte,
                 'STORE_count': self.last_level_store.EVICT_count,
                 'STORE_byte': self.last_level_store.EVICT_byte,
-                'HIT_count': self.last_level_load.MISS_count,
-                'HIT_byte': self.last_level_load.MISS_byte,
                 'EVICT_count': 0,
                 'EVICT_byte': 0,
                 'MISS_count': 0,
                 'MISS_byte': 0}
 
-    def __repr__(self):
+    def __repr__(self, recursion=False):
         """Return string representation of object."""
-        return 'MainMemory(last_level_load={!r}, last_level_store={!r})'.format(
-            self.last_level_load, self.last_level_store)
+        if recursion:
+            last_level_load_repr, last_level_store_repr = map(
+                lambda c: c.__repr__(recursion=True) if c is not None else 'None',
+                [self.last_level_load, self.last_level_store])
+        else:
+            last_level_load_repr, last_level_store_repr = map(
+                lambda c: c.name if c is not None else 'None',
+                [self.last_level_load, self.last_level_store])
+
+        return 'MainMemory(last_level_load={}, last_level_store={})'.format(
+            last_level_load_repr, last_level_store_repr)
