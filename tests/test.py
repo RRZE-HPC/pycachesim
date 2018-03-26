@@ -755,7 +755,7 @@ class TestHighlevel(unittest.TestCase):
 
         # Loading completely new data, we should see evicts of dirty cachelines from L3
         cs.load(l3.size(), l3.size())
-        
+
         self.assertEqual(l3.HIT_count, 0)
         self.assertEqual(l3.LOAD_count, 0)
         self.assertEqual(l3.MISS_count, 0)

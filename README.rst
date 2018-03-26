@@ -70,7 +70,9 @@ Each row refers to one memory-level, starting with L1 and ending with main memor
 
 The 1 hit, is for bytes which were cached already. Internally the pycachesim operates on cache-lines, which all addresses get transformed to. Thus, the two misses throughout all cache-levels are actually two complete cache-lines and after the cache-line had been loaded the consecutive access to the same cache-line are handled as hits. That is also the reason why data sizes increase from L1 to L2. L1 is accessed byte-wise and L2 only with cache-line granularity.
 
-So: hits, misses, stores and loads in L1 are byte-wise, just like stores throughout all cache-levels. Every other statistical information are based on cache-lines.
+So: hits, misses, stores and loads in L1 are byte-wise. Every other statistical information are based on cache-lines.
+
+When using victim caches, setting `victims_to` to the victim cache level, will cause pycachesim to forward unmodified cache-lines to this level on replacement. During a miss, victims_to is checked for availability and only hit if it the cache-line is found. This means, that load stats will equal hit stats in victim caches and misses should always be zero.
 
 Comparison to other Cache Simulators
 ====================================
