@@ -287,9 +287,10 @@ static int Cache__inject(Cache* self, cache_entry* entry) {
             self->name, replace_entry.cl_id, replace_entry.invalid, replace_entry.dirty);
     }
 
-    // write-back: check for dirty bit of replaced and inform next lower level of store
-    if(self->write_back == 1) {
-        if(replace_entry.invalid == 0 && replace_entry.dirty == 1) {
+    // ignore invalid cache lines for write-back or victim cache
+    if(replace_entry.invalid == 0) {
+        // write-back: check for dirty bit of replaced and inform next lower level of store
+        if(self->write_back == 1 && replace_entry.dirty == 1) {
             self->EVICT.count++;
             self->EVICT.byte += self->cl_size;
             if(self->verbosity >= 3) {
@@ -325,18 +326,17 @@ static int Cache__inject(Cache* self, cache_entry* entry) {
                     non_temporal);
                 Py_DECREF(self->store_to);
             } // else last-level-cache
+        } else if(self->victims_to != NULL) {
+            // Deliver replaced cacheline to victim cache, if neither dirty or already write_back
+            // (if it were dirty, it would have been written to store_to if write_back is enabled)
+            Py_INCREF(self->victims_to);
+            // Inject into victims_to
+            Cache__inject((Cache*)self->victims_to, &replace_entry);
+            Py_DECREF(self->victims_to);
+            // Take care to include into evict stats
+            self->EVICT.count++;
+            self->EVICT.byte += self->cl_size;
         }
-    }
-    // Deliver replaced cacheline to victim cache, if configured, valid and neither dirty or non-write_back
-    // (if it were dirty, it would have been written to store_to if write_back is enabled)
-    if(self->victims_to != NULL && replace_entry.invalid == 0 && (replace_entry.dirty != 1 || self->write_back == 0)) {
-        Py_INCREF(self->victims_to);
-        // Inject into victims_to
-        Cache__inject((Cache*)self->victims_to, &replace_entry);
-        Py_DECREF(self->victims_to);
-        // Take care to include into evict stats
-        self->EVICT.count++;
-        self->EVICT.byte += self->cl_size;
     }
 
     return replace_idx;
