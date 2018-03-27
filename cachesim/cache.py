@@ -48,14 +48,14 @@ class CacheSimulator(object):
         """Create cache hierarchy from dictionary."""
         main_memory = MainMemory()
         caches = {}
-        first_level = None
 
         referred_caches = set()
 
         # First pass, create all named caches and collect references
         for name, conf in d.items():
-            caches[name] = Cache(
-                name=name, **{k: v for k, v in conf.items() if k not in ['store_to', 'load_from']})
+            caches[name] = Cache(name=name,
+                                 **{k: v for k, v in conf.items()
+                                    if k not in ['store_to', 'load_from', 'victims_to']})
             if 'store_to' in conf:
                 referred_caches.add(conf['store_to'])
             if 'load_from' in conf:
@@ -77,16 +77,21 @@ class CacheSimulator(object):
         assert len(first_level) == 1, "Unable to find first cache level."
         first_level = caches[list(first_level)[0]]
 
-        # Find last level (has no load_from or store_to target)
-        last_level = [name for name, conf in d.items()
-                      if ('store_to' not in conf or conf['store_to'] is None) and
-                         ('load_from' not in conf or conf['load_from'] is None)]
-        assert len(last_level) == 1, "Unable to find last cache level."
-        last_level = caches[last_level[0]]
+        # Find last level caches (has no load_from or store_to target)
+        last_level_load = c = first_level
+        while c is not None:
+            last_level_load = c
+            c = c.load_from
+        assert last_level_load is not None, "Unable to find last cache level."
+        last_level_store = c = first_level
+        while c is not None:
+            last_level_store = c
+            c = c.store_to
+        assert last_level_store is not None, "Unable to find last cache level."
+
         # Set main memory connections
-        # FIXME could be solved nicer by giving mem an entry in input dict
-        main_memory.load_to(last_level)
-        main_memory.store_from(last_level)
+        main_memory.load_to(last_level_load)
+        main_memory.store_from(last_level_store)
 
         return cls(first_level, main_memory), caches, main_memory
 
@@ -340,6 +345,15 @@ class Cache(object):
             "cl_size may only increase towards main memory."
         self.store_to = store_to
         self.backend.store_to = store_to.backend
+
+    def set_victims_to(self, victims_to):
+        """Update victims_to in Cache and backend."""
+        assert victims_to is None or isinstance(victims_to, Cache), \
+            "store_to needs to be None or a Cache object."
+        assert victims_to is None or victims_to.cl_size == self.cl_size, \
+            "cl_size may only increase towards main memory."
+        self.victims_to = victims_to
+        self.backend.victims_to = victims_to.backend
 
     def __getattr__(self, key):
         """Return cache attribute, preferably to backend."""

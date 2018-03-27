@@ -773,14 +773,14 @@ class TestHighlevel(unittest.TestCase):
                 'write_allocate': True, 'write_back': True,
                 'load_from': 'L2', 'store_to': 'L2'},
              'L2': {
-                'sets': 512, 'ways': 8, 'cl_size': 64,
+                'sets': 512, 'ways': 16, 'cl_size': 64,
                 'replacement_policy': 'LRU',
                 'write_allocate': True, 'write_back': True,
                 'load_from': 'L3', 'store_to': 'L3'},
              'L3': {
                 'sets': 20480, 'ways': 16, 'cl_size': 64,
                 'replacement_policy': 'LRU', 
-                'write_allocate': True, 'write_back': True}
+                'write_allocate': False, 'write_back': False}
         })
 
         self.assertEqual(cs.first_level.name, 'L1')
@@ -792,3 +792,34 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(mem.last_level_store.name, 'L3')
         self.assertEqual(cs.first_level.backend.store_to, caches['L2'].backend)
         self.assertEqual(cs.first_level.backend.load_from, caches['L2'].backend)
+
+    def test_from_dict_victims(self):
+        cs, caches, mem = CacheSimulator.from_dict({
+            'L1': {
+                'sets': 64, 'ways': 8, 'cl_size': 64,
+                'replacement_policy': 'LRU',
+                'write_allocate': True, 'write_back': True,
+                'load_from': 'L2', 'store_to': 'L2'},
+             'L2': {
+                'sets': 512, 'ways': 16, 'cl_size': 64,
+                'replacement_policy': 'LRU',
+                'write_allocate': True, 'write_back': True,
+                'store_to': 'L3', 'victims_to': 'L3'},
+             'L3': {
+                'sets': 20480, 'ways': 16, 'cl_size': 64,
+                'replacement_policy': 'LRU',
+                'write_allocate': True, 'write_back': True}
+        })
+
+        self.assertEqual(cs.first_level.name, 'L1')
+
+        caches = {c.name: c for c in cs.levels(with_mem=False)}
+
+        self.assertEqual(sorted(['L1', 'L2', 'L3']), sorted(caches.keys()))
+        self.assertEqual(mem.last_level_load.name, 'L2')
+        self.assertEqual(mem.last_level_store.name, 'L3')
+        self.assertEqual(cs.first_level.backend.store_to, caches['L2'].backend)
+        self.assertEqual(cs.first_level.backend.load_from, caches['L2'].backend)
+        self.assertEqual(caches['L2'].backend.victims_to, mem.last_level_store.backend)
+        self.assertEqual(caches['L2'].backend.load_from, None)
+
