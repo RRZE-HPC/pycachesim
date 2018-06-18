@@ -535,7 +535,7 @@ class CacheVisualizer(object):
         """)
 
         # dimension string needs to be reversed and padded to 3 dimensions (using 1s)
-        dim_str = " ".join([str(d+1) for d in reversed((self.dims + [1, 1, 1])[3:])])
+        dim_str = " ".join([str(d+1) for d in reversed((self.dims + [1, 1, 1])[:3])])
 
         vtk_str += textwrap.dedent("""\
         DIMENSIONS {}
