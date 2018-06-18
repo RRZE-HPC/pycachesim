@@ -6,11 +6,8 @@ from __future__ import unicode_literals
 
 import textwrap
 from functools import reduce
-
 import sys
 from collections import Iterable
-
-import numpy as np
 
 from cachesim import backend
 
@@ -501,16 +498,16 @@ class MainMemory(object):
 class CacheVisualizer(object):
     """Visualize cache state by generation of VTK files."""
 
-    def __init__(self, cs, dims, start_address=0, element_size=8, filename_base=""):
+    def __init__(self, cs, dims, start_address=0, element_size=8, filename_base=None):
         """
         Create interface to interact with cache visualizer.
 
         :param cs: CacheSimulator object.
         :param dims: dimensions at which you wish to visualize the data
-                     for eg. [10,10]. tells visualize a 2d array of
-                     10 rows and 10 columns of elements having wordSize.
+                     for eg. [10,15]. tells visualize a 2d array of
+                     10 rows and 15 columns of elements having wordSize.
         :param start_address: starting address of the array.
-        :param element_size: size of each element.
+        :param element_size: size of each element in bytes.
         :param filename_base: base name of VTK file to be outputed for Paraview.
 
         """
@@ -520,10 +517,8 @@ class CacheVisualizer(object):
         ndim = len(dims)
         assert ndim < 3, "Currently dump and view supported up to 3-D arrays only"
 
-        self.rangeList = dims
-        self.npts = reduce(lambda x, y: x * y, self.rangeList)
-
-        self.rangeList += [0] * (3 - ndim)
+        self.dims = dims
+        self.npts = reduce(int.__mul__, self.dims, 1)
 
         self.cs = cs
         self.startAddress = start_address
@@ -539,9 +534,7 @@ class CacheVisualizer(object):
         DATASET STRUCTURED_POINTS
         """)
 
-        dim_str = ""
-        for dim_ in reversed(self.rangeList):
-            dim_str += str(dim_ + 1) + " "
+        dim_str = " ".join([str(d+1) for d in reversed(self.dims)])
 
         vtk_str += textwrap.dedent("""\
         DIMENSIONS {}
@@ -554,24 +547,30 @@ class CacheVisualizer(object):
         ctr = 1
         data = []
         for c in self.cs.levels(with_mem=False):
-            address = np.zeros(self.npts, dtype=bool)
-            cached_addr = [x - self.startAddress for x in c.backend.cached]
-            filtered_cached_addr = [x for x in cached_addr if 0 <= x < self.npts * self.element_size]
-            cached_word = [x // self.element_size for x in filtered_cached_addr]
-            address[cached_word] = True
+            address = [0] * self.npts
+            cached_addresses = {x - self.startAddress for x in c.backend.cached}
+            # Filtering elements outside of scope and scaling address to element indices
+            cached_elements = {x // self.element_size for x in cached_addresses
+                               if 0 <= x < self.npts * self.element_size}
+            for a in cached_elements:
+                address[a] = 1
             data.append(address)
             ctr += 1
 
         total_levels = (ctr - 1)
-        data = np.reshape(data, (total_levels, self.npts))
-        data = np.transpose(data)
-
         vtk_str += "\nData_arr {} {} double\n".format(total_levels, self.npts)
 
-        if not self.filename_base:
-            filename = sys.stdout
+        for data_lvl in data:
+            vtk_str += " ".join([str(i) for i in data_lvl])
+            vtk_str += "\n"
+
+        if self.filename_base is None:
+            file = sys.stdout
         else:
-            filename = "{}_{}.vtk".format(self.filename_base, self.count)
+            file = open("{}_{}.vtk".format(self.filename_base, self.count), 'w')
+        file.write(vtk_str)
+        file.flush()
+        if file != sys.stdout:
+            file.close()
 
         self.count += 1
-        np.savetxt(filename, data, fmt="%i", newline="\n", header=vtk_str, comments="")

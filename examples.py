@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 """Example cache hierarchies that can be simulated."""
-from pycachesim import Cache, MainMemory, CacheSimulator
+from cachesim import Cache, MainMemory, CacheSimulator, CacheVisualizer
 
 # =====================
 # Intel Inclusive Cache
@@ -12,7 +13,7 @@ l3 = Cache(name="L3",
            sets=20480, ways=16, cl_size=cacheline_size,
            replacement_policy="LRU",
            write_back=True, write_allocate=True,
-           store_to=mem, load_from=mem, victims_to=None,
+           store_to=None, load_from=None, victims_to=None,
            swap_on_load=False)
 mem.load_to(l3)
 mem.store_from(l3)
@@ -31,8 +32,11 @@ l1 = Cache(name="L1",
            store_to=l2, load_from=l2, victims_to=None,
            swap_on_load=False)  # inclusive/exclusive does not matter in first-level
 
-cs = CacheSimulator(load_from=l1, store_to=l1,
-                    main_memory=mem)
+cs = CacheSimulator(first_level=l1, main_memory=mem)
+
+cs.load(23)
+cv = CacheVisualizer(cs, [10, 16])
+cv.dump_state()
 
 # =============================
 # AMD Bulldozer Exclusive Cache
@@ -56,7 +60,7 @@ l2 = Cache(name="L2",
 mem.load_to(l2)
 wcc = Cache(name="WCC",
             sets=1, ways=64, cl_size=cacheline_size,  # 4KB
-            sub_block_size=1,  # sub-blocks of 1 Byte size
+            subblock_size=1,  # sub-blocks of 1 Byte size
             replacement_policy="LRU",
             write_back=True, write_allocate=False,  # this policy only makes sens with WCC
             store_to=l2, load_from=None, victims_to=None,
@@ -64,7 +68,7 @@ wcc = Cache(name="WCC",
 l1 = Cache(name="L1",
            sets=64, ways=4, cl_size=cacheline_size,  # 16kB
            replacement_policy="LRU",
-           write_back=False, write_allocate=False,
+           write_back=True, write_allocate=False,
            store_to=wcc, load_from=l2, victims_to=None,
            write_combining=True,
            swap_on_load=False)  # inclusive/exclusive does not matter in first-level
@@ -105,5 +109,5 @@ l1 = Cache(name="L1",
 
 # TODO write-combine buffers with 64B blocks and 32 sets
 
-cs = CacheSimulator(load_from=l1, store_to=l1,
+cs = CacheSimulator(first_level=l1,
                     main_memory=mem)
