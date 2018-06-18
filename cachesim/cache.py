@@ -527,7 +527,7 @@ class CacheVisualizer(object):
 
         self.cs = cs
         self.startAddress = start_address
-        self.wordSize = element_size
+        self.element_size = element_size
         self.filename_base = filename_base
         self.count = 0
 
@@ -555,9 +555,9 @@ class CacheVisualizer(object):
         data = []
         for c in self.cs.levels(with_mem=False):
             address = np.zeros(self.npts, dtype=bool)
-            cached_addr = [x - self.startAddress for x in list(c.backend.cached)]
-            filtered_cached_addr = [x for x in cached_addr if 0 <= x < self.npts * self.wordSize]
-            cached_word = [x // self.wordSize for x in filtered_cached_addr]
+            cached_addr = [x - self.startAddress for x in c.backend.cached]
+            filtered_cached_addr = [x for x in cached_addr if 0 <= x < self.npts * self.element_size]
+            cached_word = [x // self.element_size for x in filtered_cached_addr]
             address[cached_word] = True
             data.append(address)
             ctr += 1
