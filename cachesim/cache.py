@@ -560,8 +560,8 @@ class CacheVisualizer(object):
         total_levels = (ctr - 1)
         vtk_str += "\nData_arr {} {} double\n".format(total_levels, self.npts)
 
-        for data_lvl in data:
-            vtk_str += " ".join([str(i) for i in data_lvl])
+        for i in range(self.npts):
+            vtk_str += " ".join([str(d[i]) for d in data])
             vtk_str += "\n"
 
         if self.filename_base is None:
