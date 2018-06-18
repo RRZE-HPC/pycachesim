@@ -115,6 +115,7 @@ class CacheSimulator(object):
         """
         Load one or more addresses.
 
+        :param addr: byte address of load location
         :param length: All address from addr until addr+length (exclusive) are
                        loaded (default: 1)
         """
@@ -129,8 +130,10 @@ class CacheSimulator(object):
         """
         Store one or more adresses.
 
+        :param addr: byte address of store location
         :param length: All address from addr until addr+length (exclusive) are
                        stored (default: 1)
+        :param non_temporal: if True, no write-allocate will be issued, but cacheline will be zeroed
         """
         if non_temporal:
             raise ValueError("non_temporal stores are not yet supported")
@@ -219,6 +222,13 @@ class CacheSimulator(object):
         return 'CacheSimulator({}, {})'.format(first_level_repr, main_memory_repr)
 
 
+def get_backend(cache):
+    """Return backend of *cache* unless *cache* is None, then None is returned."""
+    if cache is not None:
+        return cache.backend
+    return None
+
+
 class Cache(object):
     """Cache level object."""
 
@@ -257,8 +267,6 @@ class Cache(object):
         :param swap_on_load: if true, lines will be swaped between this and the
                              higher cache level (default is false).
                              Currently not supported.
-        :param parent: the cache where misses are forwarded to, if None it is a
-                       last level cache
 
         The total cache size is the product of sets*ways*cl_size.
         Internally all addresses are converted to cacheline indices.
@@ -310,15 +318,9 @@ class Cache(object):
             replacement_policy_id=self.replacement_policy_id,
             write_back=write_back, write_allocate=write_allocate,
             write_combining=write_combining, subblock_size=subblock_size,
-            load_from=self._get_backend(load_from), store_to=self._get_backend(store_to),
-            victims_to=self._get_backend(victims_to),
+            load_from=get_backend(load_from), store_to=get_backend(store_to),
+            victims_to=get_backend(victims_to),
             swap_on_load=swap_on_load)
-
-    def _get_backend(self, cache):
-        """Return backend of *cache* unless *cache* is None, then None is returned."""
-        if cache is not None:
-            return cache.backend
-        return None
 
     def get_cl_start(self, addr):
         """Return first address belonging to the same cacheline as *addr*."""
