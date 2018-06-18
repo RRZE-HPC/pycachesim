@@ -1,5 +1,6 @@
-"""Example cache hierachies that can be simulated."""
+"""Example cache hierarchies that can be simulated."""
 from pycachesim import Cache, MainMemory, CacheSimulator
+
 # =====================
 # Intel Inclusive Cache
 # =====================

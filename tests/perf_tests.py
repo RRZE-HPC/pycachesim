@@ -11,7 +11,7 @@ from cachesim import CacheSimulator, Cache
 
 
 def do_cprofile(func):
-    '''Originally from https://zapier.com/engineering/profiling-python-boss/'''
+    """Originally from https://zapier.com/engineering/profiling-python-boss/"""
     def profiled_func(*args, **kwargs):
         profile = cProfile.Profile()
         try:
@@ -23,7 +23,8 @@ def do_cprofile(func):
             profile.print_stats()
     return profiled_func
 
-class Timer:    
+
+class Timer:
     def __enter__(self):
         self.start = time.clock()
         return self
@@ -100,7 +101,7 @@ class TimingTests:
     def run(self):
         print("{:>40} | {:<10}".format("Function", "Time (s)"))
         print("-"*40+" | "+"-"*10)
-        for k,f in sorted(self.__class__.__dict__.items()):
+        for k, f in sorted(self.__class__.__dict__.items()):
             if k.startswith('time_'):
                 ret = f(self)
                 if ret:

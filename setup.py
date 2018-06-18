@@ -4,13 +4,14 @@ from __future__ import absolute_import
 from setuptools.extension import Extension
 from setuptools import setup, find_packages  # Always prefer setuptools over distutils
 from codecs import open  # To use a consistent encoding
-from os import path
-import os, io, re
+import os
+import io
+import re
 
-here = path.abspath(path.dirname(__file__))
+here = os.path.abspath(os.path.dirname(__file__))
 
 # Get the long description from the relevant file
-with open(path.join(here, 'README.rst'), encoding='utf-8') as f:
+with open(os.path.join(here, 'README.rst'), encoding='utf-8') as f:
     long_description = f.read()
 
 
@@ -87,9 +88,9 @@ setup(
     # simple. Or you can use find_packages().
     packages=find_packages(exclude=['contrib', 'docs', 'tests*']),
 
-    ext_modules = [
+    ext_modules=[
         Extension(
-            'cachesim.backend', sources = ['cachesim/backend.c'], extra_compile_args=['-std=c99']),
+            'cachesim.backend', sources=['cachesim/backend.c'], extra_compile_args=['-std=c99']),
     ],
 
     # List run-time dependencies here.  These will be installed by pip when your
