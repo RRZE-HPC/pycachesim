@@ -4,6 +4,8 @@ from __future__ import print_function
 from __future__ import division
 from __future__ import unicode_literals
 
+import textwrap
+from functools import reduce
 import sys
 from collections import Iterable
 
@@ -172,7 +174,7 @@ class CacheSimulator(object):
             print("{name:>5} {HIT_count:>6} ({HIT_byte:>8}B) {MISS_count:>6} ({MISS_byte:>8}B) "
                   "{LOAD_count:>6} ({LOAD_byte:>8}B) {STORE_count:>6} "
                   "({STORE_byte:>8}B) {EVICT_count:>6} ({EVICT_byte:>8}B)".format(
-                      HIT_bytes=2342, **s),
+                    HIT_bytes=2342, **s),
                   file=file)
 
     def levels(self, with_mem=True):
@@ -390,7 +392,7 @@ class Cache(object):
 
     def size(self):
         """Return total cache size."""
-        return self.sets*self.ways*self.cl_size
+        return self.sets * self.ways * self.cl_size
 
     def __repr__(self, recursion=False):
         """Return string representation of object."""
@@ -491,3 +493,85 @@ class MainMemory(object):
 
         return 'MainMemory(last_level_load={}, last_level_store={})'.format(
             last_level_load_repr, last_level_store_repr)
+
+
+class CacheVisualizer(object):
+    """Visualize cache state by generation of VTK files."""
+
+    def __init__(self, cs, dims, start_address=0, element_size=8, filename_base=None):
+        """
+        Create interface to interact with cache visualizer.
+
+        :param cs: CacheSimulator object.
+        :param dims: dimensions at which you wish to visualize the data
+                     for eg. [10,15]. tells visualize a 2d array of
+                     10 rows and 15 columns of elements having wordSize.
+        :param start_address: starting address of the array.
+        :param element_size: size of each element in bytes.
+        :param filename_base: base name of VTK file to be outputed for Paraview.
+
+        """
+        assert isinstance(cs, CacheSimulator), \
+            "cs needs to be a CacheSimulator object."
+
+        ndim = len(dims)
+        assert ndim < 3, "Currently dump and view supported up to 3-D arrays only"
+
+        self.dims = dims
+        self.npts = reduce(int.__mul__, self.dims, 1)
+
+        self.cs = cs
+        self.startAddress = start_address
+        self.element_size = element_size
+        self.filename_base = filename_base
+        self.count = 0
+
+    def dump_state(self):
+        vtk_str = textwrap.dedent("""\
+        # vtk DataFile Version 4.0
+        CACHESIM VTK output
+        ASCII
+        DATASET STRUCTURED_POINTS
+        """)
+
+        # dimension string needs to be reversed and padded to 3 dimensions (using 1s)
+        dim_str = " ".join([str(d+1) for d in reversed((self.dims + [1, 1, 1])[:3])])
+
+        vtk_str += textwrap.dedent("""\
+        DIMENSIONS {}
+        ORIGIN 0 0 0
+        SPACING 1 1 1
+        CELL_DATA {}
+        FIELD DATA 1
+        """).format(dim_str, self.npts)
+
+        ctr = 1
+        data = []
+        for c in self.cs.levels(with_mem=False):
+            address = [0] * self.npts
+            cached_addresses = {x - self.startAddress for x in c.backend.cached}
+            # Filtering elements outside of scope and scaling address to element indices
+            cached_elements = {x // self.element_size for x in cached_addresses
+                               if 0 <= x < self.npts * self.element_size}
+            for a in cached_elements:
+                address[a] = 1
+            data.append(address)
+            ctr += 1
+
+        total_levels = (ctr - 1)
+        vtk_str += "\nData_arr {} {} double\n".format(total_levels, self.npts)
+
+        for i in range(self.npts):
+            vtk_str += " ".join([str(d[i]) for d in data])
+            vtk_str += "\n"
+
+        if self.filename_base is None:
+            file = sys.stdout
+        else:
+            file = open("{}_{}.vtk".format(self.filename_base, self.count), 'w')
+        file.write(vtk_str)
+        file.flush()
+        if file != sys.stdout:
+            file.close()
+
+        self.count += 1
