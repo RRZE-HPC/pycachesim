@@ -509,8 +509,8 @@ class MainMemory(object):
 class CacheVisualizer(object):
     """Visualize cache state by generation of VTK files."""
 
-    def __init__(self, cs, dims, cache=None, start_address=0, element_size=8, filename_base=None,
-                 online=False, offline=True, camera_orientation="z"):
+    def __init__(self, cs, dims, cache=None, start_address=0, element_size=8, name="vis",
+                 filename_base=None, online=False, offline=True, camera_orientation="z"):
         """
         Create interface to interact with cache visualizer.
 
@@ -520,6 +520,7 @@ class CacheVisualizer(object):
                      10 rows and 15 columns of elements having wordSize.
         :param start_address: starting address of the array.
         :param element_size: size of each element in bytes.
+        :param name: give name to the visualization
         :param filename_base: base name of VTK file to be outputed for Paraview.
         :param online: if online visualization has to be enabled
         :param offline: if vtk files has to be ouputted for Paraview
@@ -538,6 +539,7 @@ class CacheVisualizer(object):
         self.cs = cs
         self.startAddress = start_address
         self.element_size = element_size
+        self.name = name
         self.filename_base = filename_base
         self.count = 0
 
@@ -617,13 +619,16 @@ class CacheVisualizer(object):
 
             grid = vtkInterface.StructuredGrid(x, y, z)
 
-            level = 0
-            for c in self.cacheList:
+            for level, c in enumerate(self.cacheList):
                 self.plobj.append(vtkInterface.PlotClass())
                 curr_plobj = self.plobj[level]
-                (data, ctr) = self.create_data()
-                curr_plobj.AddMesh(grid, scalars=data[level], stitle=c.name)
-                level += 1
+                (data,ctr) = self.create_data()
+                if self.name:
+                    title = "Name: " + self.name + "\nCache: " + c.name
+                else:
+                    title = "Cache: " + c.name
+
+                curr_plobj.AddMesh(grid, scalars=data[level], stitle=title)
                 centre = (dim[2] / 2, dim[1] / 2, dim[0] / 2)
                 camera_pos = list(centre)
 
