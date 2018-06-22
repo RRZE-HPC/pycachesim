@@ -37,6 +37,7 @@ cs = CacheSimulator(first_level=l1, main_memory=mem)
 cs.load(23)
 cv = CacheVisualizer(cs, [10, 16])
 cv.visualize()
+cv.online_visualize()
 
 # =============================
 # AMD Bulldozer Exclusive Cache

@@ -15,18 +15,17 @@ Currently supported features:
  * Write-allocate with write-back caches
  * Non-write-allocate with write-through caches
  * Write-combining with sub-blocking
+ * Tracking of cacheline states (e.g., using dirty bits)
  * Speed (core is implemented in C)
  * Python 2.7+ and 3.4+ support, with no other dependencies
 
 Planned features:
- * Report cachelines on all levels
- * Report timeline of cache events
+ * Report cachelines on all levels (preliminary support through ``backend.verbosity > 0``)
+ * Report timeline of cache events (preliminary support through ``backend.verbosity > 0``)
  * Visualize events (html file?)
- * More detailed store/evict handling (e.g., using dirty bits)
  * (uncertain) instruction cache
  * Optional classification into compulsory/capacity and conflict misses (by simulating other cache configurations in parallel)
  * (uncertain) multi-core support
- * Remove cl_size growth requirement (NVIDIA Kepler's L1 has 128B cl_size and L2 with 32B)
  
 License
 -------
@@ -97,14 +96,14 @@ While searching for more versatile cache simulator for kerncraft, I stumbled acr
 =========== ================= =========== =============== ================= ======== ======== ========= ======= ======== ============== ============== =========== =============== ================= ===================================
 Package     instructions [0]_ blocks [1]_ sub-blocks [2]_ associtivity [3]_ LRU [4]_ MRU [4]_ FIFO [4]_ RR [4]_ CCC [5]_ 3+ levels [6]_ exclusive [7]_ victim [8]_ multi-core [9]_ API [10]_         open source [11]_
 =========== ================= =========== =============== ================= ======== ======== ========= ======= ======== ============== ============== =========== =============== ================= ===================================
-gem5_              x              x             ?                x             x       x         x        ?       ?            x             ?             ?             ?         python, ruby, c++ yes, BSD-style    
-dineroIV_          x              x             x                x             x                 x        x       x            x                                                   c                 no, free for non-comercial use    
-cachegrind_        x              x                              x             x                                                                                                   cli               yes, GPLv2       
-callgrind_         x              x                              x             x                                                                                                   cli               yes, GPLv2          
+gem5_              x              x             ?                x             x       x         x        ?       ?            x             ?             ?             ?         python, ruby, c++  yes, BSD-style    
+dineroIV_          x              x             x                x             x                 x        x       x            x                                                   c                  no, free for non-comercial use    
+cachegrind_        x              x                              x             x                                                                                                   cli                yes, GPLv2       
+callgrind_         x              x                              x             x                                                                                                   cli                yes, GPLv2          
 SMPcache_                         x                              x             x                 x        x       ?                                                                Windows GUI       no, free for education und research        
-CMPsim_                           x                              x             x       x         x        x                    x             ?             ?             x         ?                 no, source not public         
-CASPER_            x              x             x                x             x       x         x        x       x            x                                         x         perl, c           no, source not public        
-pycachesim                        x                              x             x       x         x        x                    x           planned         x                       python            yes, AGPLv3          
+CMPsim_                           x                              x             x       x         x        x                    x             ?             ?             x         ?                  no, source not public         
+CASPER_            x              x             x                x             x       x         x        x       x            x                                         x         perl, c            no, source not public        
+pycachesim                        x             x                x             x       x         x        x                    x           x               x                       python, C backend  yes, AGPLv3          
 =========== ================= =========== =============== ================= ======== ======== ========= ======= ======== ============== ============== =========== =============== ================= ===================================
 
 .. _gem5: http://gem5.org/Main_Page
