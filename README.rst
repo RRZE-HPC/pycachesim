@@ -15,18 +15,17 @@ Currently supported features:
  * Write-allocate with write-back caches
  * Non-write-allocate with write-through caches
  * Write-combining with sub-blocking
+ * Tracking of cacheline states (e.g., using dirty bits)
  * Speed (core is implemented in C)
  * Python 2.7+ and 3.4+ support, with no other dependencies
 
 Planned features:
- * Report cachelines on all levels
- * Report timeline of cache events
+ * Report cachelines on all levels (preliminary support through `backend.verbosity > 0`)
+ * Report timeline of cache events (preliminary support through `backend.verbosity > 0`)
  * Visualize events (html file?)
- * More detailed store/evict handling (e.g., using dirty bits)
  * (uncertain) instruction cache
  * Optional classification into compulsory/capacity and conflict misses (by simulating other cache configurations in parallel)
  * (uncertain) multi-core support
- * Remove cl_size growth requirement (NVIDIA Kepler's L1 has 128B cl_size and L2 with 32B)
  
 License
 -------
