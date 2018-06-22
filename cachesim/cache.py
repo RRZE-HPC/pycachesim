@@ -24,6 +24,7 @@ except ImportError:
 from cachesim import backend
 
 if sys.version_info[0] < 3:
+    # noinspection PyUnresolvedReferences
     range = xrange
 
 
@@ -622,7 +623,7 @@ class CacheVisualizer(object):
             for level, c in enumerate(self.cacheList):
                 self.plobj.append(vtkInterface.PlotClass())
                 curr_plobj = self.plobj[level]
-                (data,ctr) = self.create_data()
+                (data, ctr) = self.create_data()
                 if self.name:
                     title = "Name: " + self.name + "\nCache: " + c.name
                 else:
