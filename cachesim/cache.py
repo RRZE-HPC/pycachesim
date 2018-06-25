@@ -544,7 +544,6 @@ class CacheVisualizer(object):
         self.filename_base = filename_base
         self.count = 0
 
-        self.viz_count = 0
         self.online = online
         self.offline = offline
         if not re.match(r"[+\-]?[xyz]", camera_orientation):
@@ -552,21 +551,20 @@ class CacheVisualizer(object):
                              "+x, -x, +y, -y, +z or -z")
         self.camera_orientation = camera_orientation
         self.plobj = []
-        self.cacheList = []
-        self.prev_cached = []
+        self.caches = []
         if cache is None:
             for c in self.cs.levels(with_mem=False):
-                self.cacheList.append(c)
+                self.caches.append(c)
         else:
             if isinstance(cache, list):
-                self.cacheList.extend(cache)
+                self.caches.extend(cache)
             else:
-                self.cacheList.append(cache)
+                self.caches.append(cache)
 
     def create_data(self):
-        ctr = 0
         data = []
-        for c in self.cacheList:
+        prev_cached = []
+        for c in self.caches:
             address = [0] * self.npts
             cached_addresses = {x - self.startAddress for x in c.backend.cached}
             # Filtering elements outside of scope and scaling address to element indices
@@ -574,31 +572,23 @@ class CacheVisualizer(object):
                                if 0 <= x < self.npts * self.element_size}
 
             cache_miss_elements = {}
-            if self.prev_cached:
-                cache_miss = c.backend.cached - self.prev_cached[ctr]
-                cache_miss_filtered = {x- self.startAddress for x in cache_miss}
-                cache_miss_elements = {x // self.element_size for x in
-                        cache_miss_filtered if 0 <= x < self.npts * self.element_size}
+            if prev_cached:
+                cache_miss = c.backend.cached - prev_cached
+                cache_miss_filtered = {x - self.startAddress for x in cache_miss}
+                cache_miss_elements = {
+                    x // self.element_size for x in cache_miss_filtered
+                    if 0 <= x < self.npts * self.element_size}
 
             for a in cached_elements:
                 address[a] = 2
-
             for a in cache_miss_elements:
                 address[a] = 1
-
-
             data.append(address)
 
-            if ctr==0:
-                self.prev_cached.clear()
+            prev_cached = c.backend.cached
+        return data
 
-            self.prev_cached.append(c.backend.cached)
-
-            ctr += 1
-
-        return data, ctr
-
-    def dump_state(self, data, ctr):
+    def dump_state(self, data):
         vtk_str = textwrap.dedent("""\
         # vtk DataFile Version 4.0
         CACHESIM VTK output
@@ -616,7 +606,7 @@ class CacheVisualizer(object):
                 """).format(dim_str, self.npts)
 
 
-        total_levels = (ctr)
+        total_levels = len(self.caches)
         vtk_str += "\nData_arr {} {} double\n".format(total_levels, self.npts)
 
         for i in range(self.npts):
@@ -628,13 +618,14 @@ class CacheVisualizer(object):
         else:
             file = open("{}_{}.vtk".format(self.filename_base, self.count), 'w')
         file.write(vtk_str)
-        file.flush()
         if file != sys.stdout:
             file.close()
+        else:
+            file.flush()
 
         self.count += 1
 
-    def online_visualize(self, data, ctr):
+    def online_visualize(self, data):
         if not online_visualization_support:
             raise RuntimeError("Online visualization requires vtkInterface and numpy to be "
                                "installed. E.g., using pip install --user pycachesim[ONLINE_VIS].")
@@ -649,7 +640,7 @@ class CacheVisualizer(object):
 
             grid = vtkInterface.StructuredGrid(x, y, z)
 
-            for level, c in enumerate(self.cacheList):
+            for level, c in enumerate(self.caches):
                 self.plobj.append(vtkInterface.PlotClass())
                 curr_plobj = self.plobj[level]
 
@@ -685,7 +676,7 @@ class CacheVisualizer(object):
                 curr_plobj.SetCameraPosition(camera_location)
                 curr_plobj.Plot(autoclose=False)
         else:
-            for level, c in enumerate(self.cacheList):
+            for level, c in enumerate(self.caches):
                 curr_plobj = self.plobj[level]
                 curr_plobj.mesh.AddCellScalars(np.array(data[level]), '')
                 curr_plobj.Render()
@@ -693,9 +684,9 @@ class CacheVisualizer(object):
         self.viz_count += 1
 
     def visualize(self):
-        (data,ctr) = self.create_data()
+        data = self.create_data()
 
         if self.online:
-            self.online_visualize(data, ctr)
+            self.online_visualize(data)
         if self.offline:
-            self.dump_state(data, ctr)
+            self.dump_state(data)
