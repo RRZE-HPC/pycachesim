@@ -552,6 +552,7 @@ class CacheVisualizer(object):
         self.camera_orientation = camera_orientation
         self.plobj = []
         self.cacheList = []
+        self.prev_cached = []
         if cache is None:
             for c in self.cs.levels(with_mem=False):
                 self.cacheList.append(c)
@@ -562,7 +563,7 @@ class CacheVisualizer(object):
                 self.cacheList.append(cache)
 
     def create_data(self):
-        ctr = 1
+        ctr = 0
         data = []
         for c in self.cacheList:
             address = [0] * self.npts
@@ -570,23 +571,51 @@ class CacheVisualizer(object):
             # Filtering elements outside of scope and scaling address to element indices
             cached_elements = {x // self.element_size for x in cached_addresses
                                if 0 <= x < self.npts * self.element_size}
+
+            cache_miss_elements = {}
+            if self.prev_cached:
+                cache_miss = c.backend.cached - self.prev_cached[ctr]
+                cache_miss_filtered = {x- self.startAddress for x in cache_miss}
+                cache_miss_elements = {x // self.element_size for x in
+                        cache_miss_filtered if 0 <= x < self.npts * self.element_size}
+
             for a in cached_elements:
+                address[a] = 2
+
+            for a in cache_miss_elements:
                 address[a] = 1
+
+
             data.append(address)
+
+            if ctr==0:
+                self.prev_cached.clear()
+
+            self.prev_cached.append(c.backend.cached)
+
             ctr += 1
+
         return data, ctr
 
-    def dump_state(self):
+    def dump_state(self, data, ctr):
         vtk_str = textwrap.dedent("""\
         # vtk DataFile Version 4.0
         CACHESIM VTK output
         ASCII
         DATASET STRUCTURED_POINTS
         """)
+        # dimension string needs to be reversed and padded to 3 dimensions (using 1s)
+        dim_str = " ".join([str(d+1) for d in reversed((self.dims + [1, 1, 1])[:3])])
+        vtk_str += textwrap.dedent("""\
+                DIMENSIONS {}
+                ORIGIN 0 0 0
+                SPACING 1 1 1
+                CELL_DATA {}
+                FIELD DATA 1
+                """).format(dim_str, self.npts)
 
-        (data, ctr) = self.create_data()
 
-        total_levels = (ctr - 1)
+        total_levels = (ctr)
         vtk_str += "\nData_arr {} {} double\n".format(total_levels, self.npts)
 
         for i in range(self.npts):
@@ -604,7 +633,7 @@ class CacheVisualizer(object):
 
         self.count += 1
 
-    def online_visualize(self):
+    def online_visualize(self, data, ctr):
         if not online_visualization_support:
             raise RuntimeError("Online visualization requires vtkInterface and numpy to be "
                                "installed. E.g., using pip install --user pycachesim[ONLINE_VIS].")
@@ -622,7 +651,6 @@ class CacheVisualizer(object):
             for level, c in enumerate(self.cacheList):
                 self.plobj.append(vtkInterface.PlotClass())
                 curr_plobj = self.plobj[level]
-                (data,ctr) = self.create_data()
                 if self.name:
                     title = "Name: " + self.name + "\nCache: " + c.name
                 else:
@@ -657,14 +685,15 @@ class CacheVisualizer(object):
         else:
             for level, c in enumerate(self.cacheList):
                 curr_plobj = self.plobj[level]
-                (data, ctr) = self.create_data()
                 curr_plobj.mesh.AddCellScalars(np.array(data[level]), '')
                 curr_plobj.Render()
 
         self.viz_count += 1
 
     def visualize(self):
+        (data,ctr) = self.create_data()
+
         if self.online:
-            self.online_visualize()
+            self.online_visualize(data, ctr)
         if self.offline:
-            self.dump_state()
+            self.dump_state(data, ctr)
