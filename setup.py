@@ -46,7 +46,7 @@ setup(
     long_description=long_description,
 
     # The project's main homepage.
-    url='https://github.com/cod3monk/pycachesim',
+    url='https://github.com/RRZE-HPC/pycachesim',
 
     # Author details
     author='Julian Hammer',
