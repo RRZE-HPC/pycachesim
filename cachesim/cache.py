@@ -193,6 +193,10 @@ class CacheSimulator(object):
         if with_mem:
             yield self.main_memory
 
+    def count_invalid_entries(self):
+        """Sum of all invalid entry counts from cache levels."""
+        return sum([c.count_invalid_entries() for c in self.levels(with_mem=False)])
+
     # def draw_array(self, start, width, height, block=1):
     #     """Return image representation of cache states."""
     #     length = (width*height)//block

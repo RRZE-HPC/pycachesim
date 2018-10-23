@@ -846,6 +846,16 @@ static PyObject* Cache_reset_stats(Cache* self) {
     Py_RETURN_NONE;
 }
 
+static PyObject* Cache_count_invalid_entries(Cache* self) {
+    int count = 0;
+    for(int i=0; i<self->ways*self->sets; i++) {
+        if(self->placement[i].invalid == 1) {
+            count++;
+        }
+    }
+    return Py_BuildValue("i", count);
+}
+
 static PyMethodDef Cache_methods[] = {
     {"load", (PyCFunction)Cache_load, METH_VARARGS|METH_KEYWORDS, NULL},
     {"iterload", (PyCFunction)Cache_iterload, METH_VARARGS|METH_KEYWORDS, NULL},
@@ -855,6 +865,7 @@ static PyMethodDef Cache_methods[] = {
     {"contains", (PyCFunction)Cache_contains, METH_VARARGS, NULL},
     {"force_write_back", (PyCFunction)Cache_force_write_back, METH_VARARGS, NULL},
     {"reset_stats", (PyCFunction)Cache_reset_stats, METH_VARARGS, NULL},
+    {"count_invalid_entries", (PyCFunction)Cache_count_invalid_entries, METH_VARARGS, NULL},
 
     /* Sentinel */
     {NULL, NULL}
