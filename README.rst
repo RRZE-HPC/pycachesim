@@ -23,6 +23,7 @@ Planned features:
  * Report cachelines on all levels (preliminary support through ``backend.verbosity > 0``)
  * Report timeline of cache events (preliminary support through ``backend.verbosity > 0``)
  * Visualize events (html file?)
+ * Interface to Valgrind Infrastructure (see `Lackey <http://valgrind.org/docs/manual/lk-manual.html>`_) for access history replay.
  * (uncertain) instruction cache
  * Optional classification into compulsory/capacity and conflict misses (by simulating other cache configurations in parallel)
  * (uncertain) multi-core support
