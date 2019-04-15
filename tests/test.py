@@ -711,7 +711,7 @@ class TestHighlevel(unittest.TestCase):
 
         # Store (and load) sufficient data to fill L2 exactly
         cs.store(0, cacheline_size)
-        cs.load(cacheline_size, l2.size() - cacheline_size)
+        cs.load(cacheline_size, length=l2.size() - cacheline_size)
 
         self.assertEqual(l3.HIT_count, 0)
         self.assertEqual(l3.LOAD_count, l3.HIT_count)
@@ -725,28 +725,32 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(l2.STORE_count, 1)
 
         # Beyond L2, we start spilling victims into L3
-        cs.load(l2.size(), l3.size() - l2.size())
+        cs.load(l2.size(), length=l3.size() - l2.size())
 
         self.assertEqual(l2.EVICT_count, l3.size() // cacheline_size - l2.size() // cacheline_size)
         self.assertEqual(l2.EVICT_byte, l3.size() - l2.size())
         self.assertEqual(l3.HIT_count, 0)
         self.assertEqual(l3.LOAD_count, l3.HIT_count)
         self.assertEqual(l3.MISS_count, 0)
-        self.assertEqual(l3.STORE_count, 1)  # dirty line has reached L3
-        self.assertEqual(l3.EVICT_count, 0)  # not yet evicted, because all data fits L3
+        # evicts are reaching L3 (including dirty line):
+        self.assertEqual(l3.STORE_count,
+                         l3.size() // cacheline_size - l2.size() // cacheline_size)
+        self.assertEqual(l3.STORE_byte, l3.size() - l2.size())
+        # dirty line has not yet been evicted, because dirty line came late into L3
+        self.assertEqual(l3.EVICT_count, 0)
         self.assertEqual(mem.STORE_count, 0)
 
         cs.reset_stats()
 
         # Starting from the beginning, we should see all data coming from L3
-        cs.load(0, l2.size())
+        cs.load(0, length=l2.size())
 
         self.assertEqual(l2.EVICT_count, l2.size() // cacheline_size)
         self.assertEqual(l2.EVICT_byte, l2.size())
         self.assertEqual(l3.HIT_count, l2.size() // cacheline_size)
         self.assertEqual(l3.LOAD_count, l3.HIT_count)
         self.assertEqual(l3.MISS_count, 0)
-        self.assertEqual(l3.STORE_count, 0)
+        self.assertEqual(l3.STORE_count, l2.size() // cacheline_size)
         self.assertEqual(l3.EVICT_count, 0)
         self.assertEqual(mem.LOAD_count, 0)
         self.assertEqual(mem.STORE_count, 0)
@@ -754,12 +758,13 @@ class TestHighlevel(unittest.TestCase):
         cs.reset_stats()
 
         # Loading completely new data, we should see evicts of dirty cachelines from L3
-        cs.load(l3.size(), l3.size())
+        cs.load(l3.size(), length=l3.size())
 
         self.assertEqual(l3.HIT_count, 0)
         self.assertEqual(l3.LOAD_count, 0)
         self.assertEqual(l3.MISS_count, 0)
-        self.assertEqual(l3.STORE_count, 0)
+        self.assertEqual(l3.STORE_count, l3.size() // cacheline_size)
+        self.assertEqual(l3.STORE_byte, l3.size())
         self.assertEqual(l3.EVICT_count, 1)  # now the dirty line is evicted
         self.assertEqual(mem.LOAD_count, l3.size() // cacheline_size)
         self.assertEqual(mem.STORE_count, 1)
