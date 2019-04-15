@@ -331,11 +331,14 @@ static int Cache__inject(Cache* self, cache_entry* entry) {
             // (if it were dirty, it would have been written to store_to if write_back is enabled)
             Py_INCREF(self->victims_to);
             // Inject into victims_to
-            Cache__inject((Cache*)self->victims_to, &replace_entry);
-            Py_DECREF(self->victims_to);
+            Cache* victims_to = self->victims_to;
+            Cache__inject(victims_to, &replace_entry);
             // Take care to include into evict stats
             self->EVICT.count++;
             self->EVICT.byte += self->cl_size;
+            victims_to->STORE.count++;
+            victims_to->STORE.byte += self->cl_size;
+            Py_DECREF(self->victims_to);
         }
     }
 
