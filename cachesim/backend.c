@@ -1015,12 +1015,7 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
         self->placement[i].dirty = 0;
     }
 
-    // Check if ways and cl_size are of power^2
-    if(!isPowerOfTwo(self->ways)) {
-        // throw exception
-        PyErr_SetString(PyExc_ValueError, "ways needs to be a power of two.");
-        return -1;
-    }
+    // Check if cl_size is of power^2
     if(!isPowerOfTwo(self->cl_size)) {
         // throw exception
         PyErr_SetString(PyExc_ValueError, "cl_size needs to be a power of two.");

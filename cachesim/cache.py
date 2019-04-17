@@ -293,7 +293,6 @@ class Cache(object):
             "cl_size may only increase towards main memory."
         assert load_from is None or load_from.cl_size <= cl_size, \
             "cl_size may only increase towards main memory."
-        assert is_power2(ways), "ways needs to be a power of 2"
         assert replacement_policy in self.replacement_policy_enum, \
             "Unsupported replacement strategy, we only support: " + \
             ', '.join(self.replacement_policy_enum)
