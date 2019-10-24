@@ -289,9 +289,9 @@ class Cache(object):
             "victims_to needs to be None or a Cache object."
         assert is_power2(cl_size), \
             "cl_size needs to be a power of two."
-        assert store_to is None or store_to.cl_size <= cl_size, \
+        assert store_to is None or store_to.cl_size >= cl_size, \
             "cl_size may only increase towards main memory."
-        assert load_from is None or load_from.cl_size <= cl_size, \
+        assert load_from is None or load_from.cl_size >= cl_size, \
             "cl_size may only increase towards main memory."
         assert replacement_policy in self.replacement_policy_enum, \
             "Unsupported replacement strategy, we only support: " + \
