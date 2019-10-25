@@ -55,3 +55,7 @@ docs/_build/
 
 # PyBuilder
 target/
+
+# pintool build directories
+pintool/obj-intel64/*
+pintool/obj-ia32/*
