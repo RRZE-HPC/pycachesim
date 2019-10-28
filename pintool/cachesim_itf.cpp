@@ -1,25 +1,5 @@
-/*
- * Copyright 2002-2019 Intel Corporation.
- * 
- * This software is provided to you as Sample Source Code as defined in the accompanying
- * End User License Agreement for the Intel(R) Software Development Products ("Agreement")
- * section 1.L.
- * 
- * This software and the related documents are provided as is, with no express or implied
- * warranties, other than those that are expressly stated in the License.
- */
 
-/*
- * Sample buffering tool
- * 
- * This tool collects an address trace, including PC, read/write EA,
- * and read/write size, by filling a buffer.  When the buffer overflows,
- * the callback writes all of the collected records to a file.
- *
- */
-
-
-
+#include "Python.h"
 #include "pin.H"
 #include <iostream>
 #include <stdio.h>
@@ -27,11 +7,6 @@
 using std::cerr;
 using std::string;
 using std::endl;
-
-/*
- * Name of the output file
- */
-KNOB<string> KnobOutputFile(KNOB_MODE_WRITEONCE, "pintool", "o", "bufferaddr.out", "output file");
 
 /* Struct for holding memory references.  Rather than having two separate
  * buffers for loads and stores, we just use one struct that includes a
@@ -45,7 +20,9 @@ struct MEMREF
     UINT32 load;
 };
 
-FILE *outfile;
+PyObject *cs;
+PyObject *pName, *pModule, *pInit, *pLoad, *pStore, *pFini;
+PyObject *pArgs, *pVal;
 
 BUFFER_ID bufId;
 PIN_LOCK fileLock;
@@ -130,10 +107,39 @@ VOID * BufferFull(BUFFER_ID bid, THREADID tid, const CONTEXT *ctxt, VOID *buf,
     UINT64 i;
 
     for(i=0; i<numElements; i++, reference++){
-        fprintf(outfile, "%lx %lx %u %u\n", (unsigned long)reference->pc, (unsigned long)reference->address,
-                reference->size, reference->load);   
+
+        pArgs = PyTuple_New(3);
+        PyTuple_SetItem(pArgs, 0, cs);
+
+        pVal = PyLong_FromUnsignedLong((unsigned long)reference->address);
+        if (!pVal)
+        {
+            Py_DECREF(pArgs);
+            continue;
+        }
+        PyTuple_SetItem(pArgs, 1, pVal);
+
+
+        pVal = PyInt_FromLong((long)reference->size);
+        if (!pVal)
+        {
+            Py_DECREF(pArgs);
+            continue;
+        }
+        PyTuple_SetItem(pArgs, 2, pVal);
+
+        if (reference->load)
+        {
+            PyObject_CallObject(pLoad, pArgs);
+        }
+        else
+        {
+            PyObject_CallObject(pStore, pArgs);
+        }
+        
+        Py_DECREF(pArgs);
     }
-    fflush(outfile);
+
     PIN_ReleaseLock(&fileLock);
 
     return buf;
@@ -150,15 +156,22 @@ VOID Fini(INT32 code, VOID *v)
 {
 
     PIN_GetLock(&fileLock, 1);
-    fclose(outfile);
-    printf("outfile closed\n");
-    PIN_ReleaseLock(&fileLock);
-}
 
-void ThreadStart(THREADID tid, CONTEXT * context, int flags, void * v)
-{
-    // We check that we got the right thing in the buffer full callback
-    PIN_SetThreadData(buf_key, PIN_GetBufferPointer(context, bufId), tid);
+    pArgs = PyTuple_New(1);
+    PyTuple_SetItem(pArgs, 0, cs);
+    PyObject_CallObject(pFini, pArgs);
+
+    Py_DECREF(pArgs);
+    Py_DECREF(pVal);
+    Py_XDECREF(pLoad);
+    Py_XDECREF(pStore);
+    Py_XDECREF(pFini);
+    Py_DECREF(cs);
+    Py_DECREF(pModule);
+
+    Py_Finalize();
+
+    PIN_ReleaseLock(&fileLock);
 }
 
 /*!
@@ -170,6 +183,68 @@ void ThreadStart(THREADID tid, CONTEXT * context, int flags, void * v)
  */
 int main(int argc, char *argv[])
 {
+    pName = PyString_FromString("cachesim_itf.py");
+    pModule = PyImport_Import(pName);
+    Py_DECREF(pName);
+    if (pModule != NULL)
+    {
+        pInit = PyObject_GetAttrString(pModule, "init_cachesim");
+        if (pInit && PyCallable_Check(pInit))
+        {
+            pArgs = PyTuple_New(0);
+            cs = PyObject_CallObject(pInit, pArgs);
+            Py_DECREF(pArgs);
+            if (cs == Null)
+            {
+                cerr << "Could not initialize cache simulator!" << endl;
+                return 1;
+            }
+        }
+        else
+        {
+            if (PyErr_Occurred())
+                PyErr_Print();
+            cerr << "Cannot find function init_cachesim" << endl;
+            return 1;
+        }
+        Py_XDECREF(pInit);
+
+        pLoad = PyObject_GetAttrString(pModule, "load");
+        if (!(pLoad && PyCallable_Check(pLoad)))
+        {
+            if (PyErr_Occurred())
+                PyErr_Print();
+            cerr << "Cannot find function load" << endl;
+            return 1;
+        }
+
+        pStore = PyObject_GetAttrString(pModule, "store");
+        if (!(pStore && PyCallable_Check(pStore)))
+        {
+            if (PyErr_Occurred())
+                PyErr_Print();
+            cerr << "Cannot find function store" << endl;
+            return 1;
+        }
+
+        pFini = PyObject_GetAttrString(pModule, "finalize");
+        if (!(pFini && PyCallable_Check(pFini)))
+        {
+            if (PyErr_Occurred())
+                PyErr_Print();
+            cerr << "Cannot find function finalize" << endl;
+            return 1;
+        }
+    }
+    else
+    {
+        PyErr_Print();
+        cerr << "Failed to load cachesim_itf.py" << endl;
+        return 1;
+    }
+
+
+
     // Initialize PIN library. Print help message if -h(elp) is specified
     // in the command line or the command line is invalid 
     if( PIN_Init(argc,argv) )
@@ -187,13 +262,6 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    outfile = fopen(KnobOutputFile.Value().c_str(), "w");
-    if (!outfile)
-    {
-        cerr << "Couldn't open bufferaddr.out" << endl;
-        return 1;
-    }
-
     PIN_InitLock(&fileLock);
 
     // add an instrumentation function
@@ -202,8 +270,8 @@ int main(int argc, char *argv[])
     // Register function to be called when the application exits
     PIN_AddFiniFunction(Fini, 0);
 
-    buf_key = PIN_CreateThreadDataKey(0);
-    PIN_AddThreadStartFunction(ThreadStart, 0);
+    // buf_key = PIN_CreateThreadDataKey(0);
+    // PIN_AddThreadStartFunction(ThreadStart, 0);
     
     // Start the program, never returns
     PIN_StartProgram();
