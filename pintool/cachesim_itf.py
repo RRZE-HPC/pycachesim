@@ -11,11 +11,15 @@ cs = CacheSimulator(l1, mem)
 
 for line in fileinput.input():
     line.rstrip()
-    sLine = line.split(" ")
-    if (bool(sLine[2])):
-        cs.load(int(sLine[0]), int(sLine[1]))
-    else:
-        cs.store(int(sLine[0]), int(sLine[1]))
+    if (line):
+        try:
+            sLine = line.split(" ")
+            if (sLine[2] == "1"):
+                cs.load(int(sLine[0]), int(sLine[1]))
+            else:
+                cs.store(int(sLine[0]), int(sLine[1]))
+        except:
+            print ("Line: " + line)
 
 cs.force_write_back()
 cs.print_stats()
