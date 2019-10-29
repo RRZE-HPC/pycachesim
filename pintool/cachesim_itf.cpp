@@ -55,7 +55,7 @@ VOID Instruction(INS ins, VOID *v){
 
 VOID Fini(INT32 code, VOID *v)
 {
-    std::cout << "Finished" << endl;
+    // std::cout << "Finished";
 }
 
 int main(int argc, char *argv[])

@@ -9,10 +9,8 @@ l2 = Cache("L2", 512, 8, 64, "LRU", store_to=l3, load_from=l3)  # 256KB
 l1 = Cache("L1", 64, 8, 64, "LRU", store_to=l2, load_from=l2)  # 32KB
 cs = CacheSimulator(l1, mem)
 
-while(True):
-    line = fileinput.input()
-    if (line == "Finished"):
-        break
+for line in fileinput.input():
+    line.rstrip()
     sLine = line.split(" ")
     if (bool(sLine[2])):
         cs.load(int(sLine[0]), int(sLine[1]))
