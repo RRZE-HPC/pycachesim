@@ -59,3 +59,6 @@ target/
 # pintool build directories
 pintool/obj-intel64/*
 pintool/obj-ia32/*
+
+# testing stuff for development
+pintool/tests/*
