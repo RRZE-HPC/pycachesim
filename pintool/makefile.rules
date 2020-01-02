@@ -14,6 +14,13 @@
 
 ###### Place all generic definitions here ######
 
+CACHESIMDIR := ../cachesim/
+
+TOOL_CXXFLAGS += -I../cachesim/
+
+#PYTHON_INCLUDE_PATH := /usr/include/python2.7
+PYTHON_INCLUDE_PATH := /usr/include/python3.6m/
+
 # This defines tests which run tools of the same name.  This is simply for convenience to avoid
 # defining the test name twice (once in TOOL_ROOTS and again in TEST_ROOTS).
 # Tests defined here should not be defined in TOOL_ROOTS and TEST_ROOTS.
@@ -72,3 +79,11 @@ SANITY_SUBSET := $(TEST_TOOL_ROOTS) $(TEST_ROOTS)
 
 # This section contains the build rules for all binaries that have special build rules.
 # See makefile.default.rules for the default build rules.
+
+$(OBJDIR)cachesim_itf$(PINTOOL_SUFFIX): $(OBJDIR)cachesim_itf$(OBJ_SUFFIX) $(OBJDIR)backend$(OBJ_SUFFIX)
+	$(LINKER) $(TOOL_LDFLAGS) $(LINK_EXE)$@ $^ $(TOOL_LPATHS) $(TOOL_LIBS)
+
+$(OBJDIR)backend$(OBJ_SUFFIX): $(CACHESIMDIR)backend.c
+	$(APP_CC) -DNDEBUG -g -O3 -Wall -Wstrict-prototypes -fPIC -I$(PYTHON_INCLUDE_PATH) -DNO_PYTHON -c $(CACHESIMDIR)backend.c -o $(OBJDIR)backend$(OBJ_SUFFIX)
+
+# gcc -DNDEBUG -g -O3 -Wall -Wstrict-prototypes -fPIC -I/usr/include/python2.7 -c backend.c -o cachesim.o

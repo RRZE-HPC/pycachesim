@@ -4,6 +4,11 @@
 #include <fstream>
 #include <stdlib.h>
 
+extern "C"
+{
+#include "backend.h"
+}
+
 KNOB<bool> KnobFollowCalls(KNOB_MODE_WRITEONCE, "pintool",
     "follow_calls", "0", "specify if the instrumentation has to follow function calls between the markers");
 
@@ -156,6 +161,13 @@ VOID Instruction(INS ins, VOID *v)
 int main(int argc, char *argv[])
 {
 
+    int i = 0;
+
+    i = testLink();
+
+    if (i==1)
+    std::cout << "success!!!" << std::endl;
+
     PIN_InitSymbols();
 
     // Initialize PIN library. Print help message if -h(elp) is specified
@@ -172,9 +184,9 @@ int main(int argc, char *argv[])
         std::cerr << "follow calls" << std::endl;
     }
 
-    IMG_AddInstrumentFunction(ImageLoad, 0);
+    // IMG_AddInstrumentFunction(ImageLoad, 0);
 
-    INS_AddInstrumentFunction(Instruction, 0);
+    // INS_AddInstrumentFunction(Instruction, 0);
     
     // Start the program, never returns
     PIN_StartProgram();

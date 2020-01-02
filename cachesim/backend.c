@@ -48,7 +48,7 @@ struct stats {
 
 typedef struct Cache {
     PyObject_HEAD
-    const char *name;
+    char *name;
     unsigned int sets;
     unsigned int ways;
     unsigned int cl_size;
@@ -82,12 +82,14 @@ typedef struct Cache {
     int verbosity;
 } Cache;
 
+#ifndef NO_PYTHON
 static void Cache_dealloc(Cache* self) {
     Py_XDECREF(self->store_to);
     Py_XDECREF(self->load_from);
     PyMem_Del(self->placement);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
+#endif
 
 unsigned int log2_uint(unsigned int x) {
     unsigned int ans = 0;
@@ -101,6 +103,7 @@ int isPowerOfTwo(unsigned int x) {
     return ((x != 0) && !(x & (x - 1)));
 }
 
+#ifndef NO_PYTHON
 static PyMemberDef Cache_members[] = {
     {"name", T_STRING, offsetof(Cache, name), 0,
      "name of cache level"},
@@ -154,6 +157,7 @@ static PyMemberDef Cache_members[] = {
      "verbosity level of output"},
     {NULL}  /* Sentinel */
 };
+#endif
 
 inline static unsigned int Cache__get_cacheline_id(Cache* self, unsigned int addr) {
     return addr >> self->cl_bits;
@@ -280,12 +284,13 @@ static int Cache__inject(Cache* self, cache_entry* entry) {
 
     // Replace other cacheline according to replacement strategy (using placement order as state)
     self->placement[set_id*self->ways+replace_idx] = *entry;
-
+#ifndef NO_PYTHON
     if(self->verbosity >= 3) {
         PySys_WriteStdout(
             "%s REPLACED cl_id=%i invalid=%i dirty=%i\n",
             self->name, replace_entry.cl_id, replace_entry.invalid, replace_entry.dirty);
     }
+#endif
 
     // ignore invalid cache lines for write-back or victim cache
     if(replace_entry.invalid == 0) {
@@ -293,11 +298,14 @@ static int Cache__inject(Cache* self, cache_entry* entry) {
         if(self->write_back == 1 && replace_entry.dirty == 1) {
             self->EVICT.count++;
             self->EVICT.byte += self->cl_size;
+        
+        #ifndef NO_PYTHON
             if(self->verbosity >= 3) {
                 PySys_WriteStdout(
                     "%s EVICT cl_id=%i\n",
                     self->name, replace_entry.cl_id, replace_entry.invalid, replace_entry.dirty);
             }
+        #endif
             if(self->store_to != NULL) {
                 int non_temporal = 0; // default for non write-combining caches
 
@@ -357,11 +365,13 @@ static int Cache__load(Cache* self, addr_range range) {
     unsigned int last_cl_id = Cache__get_cacheline_id(self, range.addr+range.length-1);
     for(unsigned int cl_id=Cache__get_cacheline_id(self, range.addr); cl_id<=last_cl_id; cl_id++) {
         unsigned int set_id = Cache__get_set_id(self, cl_id);
+    #ifndef NO_PYTHON
         if(self->verbosity >= 4) {
             PySys_WriteStdout(
                 "%s LOAD=%i addr=%i length=%i cl_id=%i set_id=%i\n",
                 self->name, self->LOAD.count, range.addr, range.length, cl_id, set_id);
         }
+    #endif
 
         // Check if cl_id is already cached
         int location = Cache__get_location(self, cl_id, set_id);
@@ -370,10 +380,12 @@ static int Cache__load(Cache* self, addr_range range) {
             self->HIT.count++;
             // We only add actual bytes that were requested to hit.byte
             self->HIT.byte += self->cl_size < range.length ? self->cl_size : range.length;
+        #ifndef NO_PYTHON
             if(self->verbosity >= 3) {
                 PySys_WriteStdout("%s HIT self->LOAD=%i addr=%i cl_id=%i set_id=%i\n",
                                   self->name, self->LOAD.count, range.addr, cl_id, set_id);
             }
+        #endif
 
             cache_entry entry = self->placement[set_id*self->ways+location];
 
@@ -419,6 +431,7 @@ static int Cache__load(Cache* self, addr_range range) {
         self->MISS.count++;
         // We only add actual bytes that were requested to miss.byte
         self->MISS.byte += self->cl_size < range.length ? self->cl_size : range.length;
+    #ifndef NO_PYTHON
         if(self->verbosity >= 2) {
             PySys_WriteStdout("%s CACHED [%i",
                               self->name, self->placement[set_id*self->ways].cl_id);
@@ -432,6 +445,7 @@ static int Cache__load(Cache* self, addr_range range) {
                 "%s MISS self->LOAD=%i addr=%i length=%i cl_id=%i set_id=%i\n",
                 self->name, self->LOAD.count, range.addr, range.length, cl_id, set_id);
         }
+    #endif
 
         // Load from lower cachelevel
         // Check victim cache, if available
@@ -443,16 +457,21 @@ static int Cache__load(Cache* self, addr_range range) {
             int victim_location_victim = Cache__get_location((Cache*)self->victims_to, cl_id, victim_set_id);
             if(victim_location_victim != -1) {
                 // hit in victim cache
+            #ifndef NO_PYTHON
                 if(self->verbosity >= 1) {
                     PySys_WriteStdout("%s VICTIM HIT cl_id=%i\n", ((Cache*)self->victims_to)->name, cl_id);
                 }
+            #endif
                 // load data from victim cache
                 Cache__load((Cache*)self->victims_to, Cache__get_range_from_cl_id(self, cl_id));
                 // do NOT go onto load_from cache
                 victim_hit = 1;
-            } else if(self->verbosity >= 1) {
+            } 
+        #ifndef NO_PYTHON
+            else if(self->verbosity >= 1) {
                 PySys_WriteStdout("%s VICTIM MISS cl_id=%i\n", ((Cache*)self->victims_to)->name, cl_id);
             }
+        #endif
             Py_DECREF(self->victims_to);
         }
         // If no hit in victim cache, or no victim cache available, go to next cache level
@@ -487,11 +506,13 @@ static void Cache__store(Cache* self, addr_range range, int non_temporal) {
     for(unsigned int cl_id=Cache__get_cacheline_id(self, range.addr); cl_id<=last_cl_id; cl_id++) {
         unsigned int set_id = Cache__get_set_id(self, cl_id);
         int location = Cache__get_location(self, cl_id, set_id);
+    #ifndef NO_PYTHON
         if(self->verbosity >= 2) {
             PySys_WriteStdout("%s STORE=%i NT=%i addr=%i length=%i cl_id=%i sets=%i location=%i\n",
                               self->name, self->LOAD.count, non_temporal, range.addr, range.length,
                               cl_id, self->sets, location);
         }
+    #endif
 
         if(self->write_allocate == 1 && non_temporal == 0) {
             // Write-allocate policy
@@ -553,6 +574,7 @@ static void Cache__store(Cache* self, addr_range range, int non_temporal) {
     }
 
     // Print bitfield
+#ifndef NO_PYTHON
     if(self->verbosity >= 3 && self->subblock_bitfield != NULL) {
         for(int k=0; k<self->sets; k++) {
            for(int j=0; j<self->ways; j++) {
@@ -569,8 +591,10 @@ static void Cache__store(Cache* self, addr_range range, int non_temporal) {
             PySys_WriteStdout("\n\n");
         }
     }
+#endif
 }
 
+#ifndef NO_PYTHON
 static PyObject* Cache_load(Cache* self, PyObject *args, PyObject *kwds)
 {
     addr_range range;
@@ -1098,4 +1122,37 @@ initbackend(void)
 #if PY_MAJOR_VERSION >= 3
     return module;
 #endif
+}
+
+#endif
+
+int testLink(void)
+{
+    return 1;
+}
+
+Cache getCacheSim(void)
+{
+    Cache cacheL1 = {.name="L1", .sets=64, .ways=8, .cl_size=64, .replacement_policy_id=1, .write_back=1, .write_allocate=1};
+    // Py_INCREF(cacheL1);
+
+    Cache cacheL2 = {.name="L2", .sets=512, .ways=8, .cl_size=64, .replacement_policy_id=1, .write_back=1, .write_allocate=1};
+    // Py_INCREF(cacheL2);
+
+    Cache cacheL3 = {.name="L3", .sets=9216, .ways=16, .cl_size=64, .replacement_policy_id=1, .write_back=1, .write_allocate=1};
+    // Py_INCREF(cacheL3);
+    
+    // Cache mem = {.name="MEM", .sets=0, .ways=0, .cl_size=0, .replacement_policy_id=1, .write_back=1, .write_allocate=1, .write_combining=1};
+    // Py_INCREF(mem);
+
+    cacheL1.load_from = (PyObject*)&cacheL2;
+    cacheL1.store_to = (PyObject*)&cacheL2;
+    
+    cacheL2.load_from = (PyObject*)&cacheL3;
+    cacheL2.store_to = (PyObject*)&cacheL3;
+
+    // cacheL3.load_from = (PyObject*)&mem;
+    // cacheL3.store_to = (PyObject*)&mem;
+
+    return cacheL1;
 }
