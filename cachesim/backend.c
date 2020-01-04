@@ -1,4 +1,5 @@
 #include "Python.h"
+#include "backend.h"
 #include <structmember.h>
 #include <limits.h>
 
@@ -23,64 +24,6 @@ static PyMethodDef cachesim_methods[] = {
     {NULL, NULL}
 };
 #endif
-
-typedef struct cache_entry {
-    unsigned int cl_id;
-
-    unsigned int dirty : 1; // if 0, content is in sync with main memory. if 1, it is not.
-                            // used for write-back
-    unsigned int invalid : 1; // denotes an entry which does not contain a valid cacheline.
-                              // it is empty.
-} cache_entry;
-
-typedef struct addr_range {
-    // Address range used to communicate consecutive accesses
-    // last addr of range is addr+length-1
-    unsigned int addr;
-    unsigned int length;
-} addr_range;
-
-struct stats {
-    unsigned int count;
-    unsigned int byte;
-    //unsigned int cl; // might be used later
-};
-
-typedef struct Cache {
-    PyObject_HEAD
-    char *name;
-    unsigned int sets;
-    unsigned int ways;
-    unsigned int cl_size;
-    unsigned int cl_bits;
-    unsigned int subblock_size;
-    unsigned int subblock_bits;
-    int replacement_policy_id; // 0 = FIFO, 1 = LRU, 2 = MRU, 3 = RR
-                               // (state is kept in the ordering)
-                               // for LFU an additional field would be required to capture state
-    int write_back; // 1 = write-back
-                    // 0 = write-through
-    int write_allocate; // 1 = write-allocate,
-                        // 0 = non-write-allocate
-    int write_combining; // 1 = this is a write-combining cache
-                         // 0 = regular cache
-
-    PyObject *load_from;
-    PyObject *store_to;
-    PyObject *victims_to;
-    int swap_on_load;
-
-    cache_entry *placement;
-    char *subblock_bitfield;
-
-    struct stats LOAD;
-    struct stats STORE;
-    struct stats HIT;
-    struct stats MISS;
-    struct stats EVICT;
-
-    int verbosity;
-} Cache;
 
 #ifndef NO_PYTHON
 static void Cache_dealloc(Cache* self) {
@@ -213,7 +156,7 @@ inline static int Cache__get_location(Cache* self, unsigned int cl_id, unsigned 
     return -1; // Not found
 }
 
-static void Cache__store(Cache* self, addr_range range, int non_temporal);
+void Cache__store(Cache* self, addr_range range, int non_temporal);
 
 static int Cache__inject(Cache* self, cache_entry* entry) {
     /*
@@ -353,7 +296,7 @@ static int Cache__inject(Cache* self, cache_entry* entry) {
     return replace_idx;
 }
 
-static int Cache__load(Cache* self, addr_range range) {
+int Cache__load(Cache* self, addr_range range) {
     /*
     Signals request of addr range by higher level. This handles hits and misses.
     */
@@ -498,7 +441,7 @@ static int Cache__load(Cache* self, addr_range range) {
     return placement_idx;
 }
 
-static void Cache__store(Cache* self, addr_range range, int non_temporal) {
+void Cache__store(Cache* self, addr_range range, int non_temporal) {
     self->STORE.count++;
     self->STORE.byte += range.length;
     // Handle range:
@@ -1125,34 +1068,3 @@ initbackend(void)
 }
 
 #endif
-
-int testLink(void)
-{
-    return 1;
-}
-
-Cache getCacheSim(void)
-{
-    Cache cacheL1 = {.name="L1", .sets=64, .ways=8, .cl_size=64, .replacement_policy_id=1, .write_back=1, .write_allocate=1};
-    // Py_INCREF(cacheL1);
-
-    Cache cacheL2 = {.name="L2", .sets=512, .ways=8, .cl_size=64, .replacement_policy_id=1, .write_back=1, .write_allocate=1};
-    // Py_INCREF(cacheL2);
-
-    Cache cacheL3 = {.name="L3", .sets=9216, .ways=16, .cl_size=64, .replacement_policy_id=1, .write_back=1, .write_allocate=1};
-    // Py_INCREF(cacheL3);
-    
-    // Cache mem = {.name="MEM", .sets=0, .ways=0, .cl_size=0, .replacement_policy_id=1, .write_back=1, .write_allocate=1, .write_combining=1};
-    // Py_INCREF(mem);
-
-    cacheL1.load_from = (PyObject*)&cacheL2;
-    cacheL1.store_to = (PyObject*)&cacheL2;
-    
-    cacheL2.load_from = (PyObject*)&cacheL3;
-    cacheL2.store_to = (PyObject*)&cacheL3;
-
-    // cacheL3.load_from = (PyObject*)&mem;
-    // cacheL3.store_to = (PyObject*)&mem;
-
-    return cacheL1;
-}

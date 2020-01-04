@@ -16,7 +16,7 @@
 
 CACHESIMDIR := ../cachesim/
 
-TOOL_CXXFLAGS += -I../cachesim/
+TOOL_CXXFLAGS += -DNO_PYTHON -I../cachesim/ 
 
 #PYTHON_INCLUDE_PATH := /usr/include/python2.7
 PYTHON_INCLUDE_PATH := /usr/include/python3.6m/
