@@ -84,6 +84,6 @@ $(OBJDIR)cachesim_itf$(PINTOOL_SUFFIX): $(OBJDIR)cachesim_itf$(OBJ_SUFFIX) $(OBJ
 	$(LINKER) $(TOOL_LDFLAGS) $(LINK_EXE)$@ $^ $(TOOL_LPATHS) $(TOOL_LIBS)
 
 $(OBJDIR)backend$(OBJ_SUFFIX): $(CACHESIMDIR)backend.c $(CACHESIMDIR)backend.h
-	$(APP_CC) -DNDEBUG -g -O3 -Wall -Wstrict-prototypes -fPIC -DNO_PYTHON -c $(CACHESIMDIR)backend.c -o $(OBJDIR)backend$(OBJ_SUFFIX)
+	$(APP_CC) -DNDEBUG -g -O3 -Wall -Wstrict-prototypes -fPIC -DNO_PYTHON -DUSE_PIN -c $(CACHESIMDIR)backend.c -o $(OBJDIR)backend$(OBJ_SUFFIX)
 
 # gcc -DNDEBUG -g -O3 -Wall -Wstrict-prototypes -fPIC -I/usr/include/python2.7 -c backend.c -o cachesim.o

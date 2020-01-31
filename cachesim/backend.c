@@ -1,11 +1,16 @@
 #ifndef NO_PYTHON
-#include "Python.h"
-#include <structmember.h>
+    #include "Python.h"
+    #include <structmember.h>
 #endif
 
 #include <stdlib.h>
 #include <limits.h>
 #include "backend.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+ FILE * file;
 
 unsigned int log2_uint(unsigned int x) {
     unsigned int ans = 0;
@@ -223,6 +228,8 @@ int Cache__load(Cache* self, addr_range range) {
     /*
     Signals request of addr range by higher level. This handles hits and misses.
     */
+    fputs("cache load\n", file);
+    fflush(file);
     self->LOAD.count++;
     self->LOAD.byte += range.length;
     int placement_idx = -1;
@@ -369,6 +376,8 @@ int Cache__load(Cache* self, addr_range range) {
 }
 
 void Cache__store(Cache* self, addr_range range, int non_temporal) {
+    fputs("cache store\n",file);
+    fflush(file);
     self->STORE.count++;
     self->STORE.byte += range.length;
     // Handle range:
@@ -467,3 +476,242 @@ void Cache__store(Cache* self, addr_range range, int non_temporal) {
     }
 #endif
 }
+
+void dealloc_cacheSim(Cache* cache)
+{
+    fputs("dealloc cachesim\n",file);
+    fflush(file);
+    //TODO free cache hierarchy, i load from != store_to != victims to
+    if (cache->load_from != NULL)
+        dealloc_cacheSim(cache->load_from);
+
+    free(cache->placement);
+    free(cache);
+    fclose(file);
+}
+
+int get_cacheSim_from_file(const char* cache_file)
+{
+    // file  = fopen ("mylog.txt","a");
+    // fputs("get cachesim\n",file);
+    // fflush(file);
+    FILE* stream = fopen(cache_file, "r");
+    if (stream == NULL) exit(EXIT_FAILURE);
+    if (ferror(stream)){
+        perror("ferror\n");
+        exit(EXIT_FAILURE);
+    }
+    if (feof(stream)){
+        perror("feof\n");
+        exit(EXIT_FAILURE);
+    } 
+    // size_t len = 0;
+    char line[1024];
+    // char* line = NULL;
+    // ssize_t nread;
+    // int num = fgetc(stream);
+    int num = 3;
+    // char* ret = fgets(line, 1024, stream);
+    // nread = getline(&line, &len, stream);
+    // if (ret == NULL) exit(EXIT_FAILURE);
+
+    // int size = atoi(line);
+
+    Cache* cacheSim[size];
+    //buffers to save information, which caches to link at the end
+    char* load_from_buff[size];
+    memset(load_from_buff, 0, size*sizeof(char*));
+    char* store_to_buff[size];
+    memset(store_to_buff, 0, size*sizeof(char*));
+    char* victims_to_buff[size];
+    memset(victims_to_buff, 0, size*sizeof(char*));
+    int linkcounter[size];
+    memset(linkcounter, 0, size*sizeof(int));
+    int counter = 0;
+
+    char *token, *key, *value;
+    char *saveptr1, *saveptr2;
+
+    fputs("read input file\n",file);
+    fflush(file);
+    while (fgets(line, 1024, stream) && counter != size)
+    {
+
+        if (line[0] != '\n' && line[0] != '#')
+        {
+            cacheSim[counter] = malloc(sizeof(Cache));
+            if (&cacheSim[counter] == NULL) exit(EXIT_FAILURE);
+
+            token = strtok_r(&line[0], ",", &saveptr1);
+            while(token != NULL)
+            {
+                key = strtok_r(token, "=", &saveptr2);
+                //TODO check for NULL
+                value = strtok_r(NULL, "=\n\r", &saveptr2);
+                
+                if (strcmp(key, "name") == 0)
+                {
+                    cacheSim[counter]->name = strdup(value);
+                }
+                else if (strcmp(key, "sets") == 0)
+                {
+                    cacheSim[counter]->sets = atoi(value);
+                }
+                else if (strcmp(key, "ways") == 0)
+                {
+                    cacheSim[counter]->ways = atoi(value);
+                }
+                else if (strcmp(key, "cl_size") == 0)
+                {
+                    cacheSim[counter]->cl_size = atoi(value);
+                }
+                else if (strcmp(key, "replacement_policy_id") == 0)
+                {
+                    cacheSim[counter]->replacement_policy_id = atoi(value);
+                }
+                else if (strcmp(key, "write_back") == 0)
+                {
+                    cacheSim[counter]->write_back = atoi(value);
+                }
+                else if (strcmp(key, "write_allocate") == 0)
+                {
+                    cacheSim[counter]->write_allocate = atoi(value);
+                }
+                else if (strcmp(key, "write_combining") == 0)
+                {
+                    cacheSim[counter]->write_combining = atoi(value);
+                }
+                else if (strcmp(key, "subblock_size") == 0)
+                {
+                    cacheSim[counter]->subblock_size = atoi(value);
+                }
+                else if (strcmp(key, "load_from") == 0)
+                {
+                    load_from_buff[counter] = strdup(value);
+                }
+                else if (strcmp(key, "store_to") == 0)
+                {
+                    store_to_buff[counter] = strdup(value);
+                }
+                else if (strcmp(key, "victms_to") == 0)
+                {
+                    victims_to_buff[counter] = strdup(value);
+                }
+                else if (strcmp(key, "swap_on_load") == 0)
+                {
+                    cacheSim[counter]->swap_on_load = atoi(value);
+                }
+                //TODO maybe init more stuff
+                else
+                {
+                    fputs("not recognized option\n",file);
+                    fflush(file);
+                    //TODO warning
+                }
+
+                token = strtok_r(NULL, ",", &saveptr1);
+            }
+
+            //TODO sanity check if initialized
+
+            cacheSim[counter]->placement = malloc(cacheSim[counter]->sets * cacheSim[counter]->ways * sizeof(cache_entry));
+            if (cacheSim[counter]->placement == NULL) exit(EXIT_FAILURE);
+            for(unsigned int i=0; i<cacheSim[counter]->sets*cacheSim[counter]->ways; i++)
+            {
+                cacheSim[counter]->placement[i].invalid = 1;
+                cacheSim[counter]->placement[i].dirty = 0;
+            }
+
+            //TODO check if these 2 lines should be this way
+            cacheSim[counter]->cl_bits = log2_uint(cacheSim[counter]->cl_size);
+            cacheSim[counter]->subblock_bitfield = NULL;
+
+            ++counter;
+        }
+
+    }
+
+    //link caches
+    fputs("link caches\n",file);
+    fflush(file);
+    for (int i = 0; i < size; ++i)
+    {
+        // fprintf(stdout, "%d:\n  loadfrom: %s\n  storeto: %s\n  victimsto: %s\n",i, load_from_buff[i],store_to_buff[i],victims_to_buff[i]);
+        for (int j = 0; j < size; ++j)
+        {
+            //TODO check for name == NULL
+            if (load_from_buff[i] != NULL && strcmp(load_from_buff[i], cacheSim[j]->name) == 0)
+            {
+                cacheSim[i]->load_from = cacheSim[j];
+                ++linkcounter[j];
+            }
+            if (store_to_buff[i] != NULL && strcmp(store_to_buff[i], cacheSim[j]->name) == 0)
+            {
+                cacheSim[i]->store_to = cacheSim[j];
+                ++linkcounter[j];
+            }
+            if (victims_to_buff[i] != NULL && strcmp(victims_to_buff[i], cacheSim[j]->name) == 0)
+            {
+                cacheSim[i]->victims_to = cacheSim[j];
+                ++linkcounter[j];
+            }
+        }
+    }
+
+    //find first level cache as interface for the cacheSimulator
+    Cache* first_level = NULL;
+    for (int i = 0; i < size; ++i)
+    {
+        // fprintf(stdout, "linkcounter %d: %d\n",i,linkcounter[i]);
+        if (linkcounter[i] == 0)
+        {
+            if (first_level != NULL)
+            {
+                //TODO error
+                fputs("cache that is not first level has no connection\n",file);
+                fflush(file);
+                exit(EXIT_FAILURE);
+            }
+            first_level = cacheSim[i];
+        }
+    }
+    if (first_level == NULL)
+    {
+        //TODO error
+        fputs("first level is null\n",file);
+        fflush(file);
+        exit(EXIT_FAILURE);
+    }
+
+    //close file and free stuff
+    fclose(stream);
+    for (int i = 0; i < size; ++i)
+    {
+        free(load_from_buff[i]);
+        free(store_to_buff[i]);
+        free(victims_to_buff[i]);
+    }
+
+    return first_level;
+    // fclose(stream);
+    return num;
+}
+
+#ifndef USE_PIN
+void printStats(Cache* cache)
+{
+    fprintf(stdout, "%s:\n",cache->name);
+    fprintf(stdout, "LOAD: %d   size: %dB\n",cache->LOAD.count, cache->LOAD.byte);
+    fprintf(stdout, "STORE: %d   size: %dB\n",cache->STORE.count, cache->STORE.byte);
+    fprintf(stdout, "HIT: %d   size: %dB\n",cache->HIT.count, cache->HIT.byte);
+    fprintf(stdout, "MISS: %d   size: %dB\n",cache->MISS.count, cache->MISS.byte);
+    fprintf(stdout, "EVICT: %d   size: %dB\n",cache->EVICT.count, cache->EVICT.byte);
+
+    if (cache->load_from != NULL)
+        printStats(cache->load_from);
+    if (cache->store_to != NULL && cache->store_to != cache->load_from)
+        printStats(cache->store_to);
+    if (cache->victims_to != NULL && cache->store_to != cache->load_from && cache->store_to != cache->victims_to)
+        printStats(cache->victims_to);
+}
+#endif

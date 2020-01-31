@@ -32,7 +32,7 @@ typedef struct Cache {
     #ifndef NO_PYTHON
     PyObject_HEAD
     #endif
-    const char *name;
+    char *name;
     unsigned int sets;
     unsigned int ways;
     unsigned int cl_size;
@@ -71,9 +71,9 @@ typedef struct Cache {
     int verbosity;
 } Cache;
 
-unsigned int log2_uint(unsigned int x);
+// unsigned int log2_uint(unsigned int x);
 
-int isPowerOfTwo(unsigned int x);
+// int isPowerOfTwo(unsigned int x);
 
 // inline int Cache__get_location(Cache* self, unsigned int cl_id, unsigned int set_id);
 
@@ -83,4 +83,11 @@ int Cache__load(Cache* self, addr_range range);
 
 void Cache__store(Cache* self, addr_range range, int non_temporal);
 
-int testLink(void);
+void dealloc_cacheSim(Cache*);
+
+// Cache* get_cacheSim_from_file(const char* file);
+int get_cacheSim_from_file(const char* file);
+
+#ifndef USE_PIN
+void printStats(Cache* cache);
+#endif

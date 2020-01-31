@@ -2,7 +2,7 @@
 #include "pinMarker.h"
 #include <iostream>
 #include <fstream>
-#include <stdlib.h>
+// #include <stdlib.h>
 
 extern "C"
 {
@@ -161,79 +161,6 @@ VOID Instruction(INS ins, VOID *v)
     }
 }
 
-Cache* getCacheSim()
-{
-    Cache* cacheL1 = new Cache;
-    cacheL1->name = "L1";
-    cacheL1->sets = 64;
-    cacheL1->ways= 8;
-    cacheL1->cl_size = 64;
-    cacheL1->replacement_policy_id = 1;
-    cacheL1->write_back = 1;
-    cacheL1->write_allocate = 1;
-    cacheL1->subblock_size = cacheL1->cl_size;
-
-    cacheL1->placement = new cache_entry[cacheL1->sets * cacheL1->ways];
-    for(unsigned int i=0; i<cacheL1->sets*cacheL1->ways; i++) {
-        cacheL1->placement[i].invalid = 1;
-        cacheL1->placement[i].dirty = 0;
-    }
-    cacheL1->cl_bits = log2_uint(cacheL1->cl_size);
-    cacheL1->subblock_bitfield = NULL;
-
-    Cache* cacheL2 = new Cache;
-    cacheL2->name = "L2";
-    cacheL2->sets = 512;
-    cacheL2->ways= 8;
-    cacheL2->cl_size = 64;
-    cacheL2->replacement_policy_id = 1;
-    cacheL2->write_back = 1;
-    cacheL2->write_allocate = 1;
-    cacheL2->subblock_size = cacheL2->cl_size;
-
-    cacheL2->placement = new cache_entry[cacheL2->sets * cacheL2->ways];
-    for(unsigned int i=0; i<cacheL2->sets*cacheL2->ways; i++) {
-        cacheL2->placement[i].invalid = 1;
-        cacheL2->placement[i].dirty = 0;
-    }
-    cacheL2->cl_bits = log2_uint(cacheL2->cl_size);
-    cacheL2->subblock_bitfield = NULL;
-    
-    Cache* cacheL3 = new Cache;
-    cacheL3->name = "L3";
-    cacheL3->sets = 9216;
-    cacheL3->ways= 16;
-    cacheL3->cl_size = 64;
-    cacheL3->replacement_policy_id = 1;
-    cacheL3->write_back = 1;
-    cacheL3->write_allocate = 1;
-    cacheL3->subblock_size = cacheL3->cl_size;
-
-    cacheL3->placement = new cache_entry[cacheL3->sets * cacheL3->ways];
-    for(unsigned int i=0; i<cacheL3->sets*cacheL3->ways; i++) {
-        cacheL3->placement[i].invalid = 1;
-        cacheL3->placement[i].dirty = 0;
-    }
-    cacheL3->cl_bits = log2_uint(cacheL3->cl_size);
-    cacheL3->subblock_bitfield = NULL;
-
-    // Py_INCREF(cacheL3);
-    
-    // Cache mem = {.name="MEM", .sets=0, .ways=0, .cl_size=0, .replacement_policy_id=1, .write_back=1, .write_allocate=1, .write_combining=1};
-    // Py_INCREF(mem);
-
-    cacheL1->load_from = cacheL2;
-    cacheL1->store_to = cacheL2;
-    
-    cacheL2->load_from = cacheL3;
-    cacheL2->store_to = cacheL3;
-
-    // cacheL3.load_from = (PyObject*)&mem;
-    // cacheL3.store_to = (PyObject*)&mem;
-
-    return cacheL1;
-}
-
 VOID printStats(Cache* cache)
 {
     std::cout << std::string(cache->name) << "\n";
@@ -247,48 +174,57 @@ VOID printStats(Cache* cache)
         printStats(cache->load_from);
 }
 
-void deallocCache(Cache* cache)
-{
-    if (cache->load_from != NULL)
-        deallocCache(cache->load_from);
-    delete[] cache->placement;
-    delete cache;
-}
-
 VOID Fini(int code, VOID * v)
 {
     printStats(firstLevel);
-    deallocCache(firstLevel);
+    dealloc_cacheSim(firstLevel);
 }
 
 int main(int argc, char *argv[])
 {
+    std::cout << "starting" << std::endl;
 
-    firstLevel = getCacheSim(); //TODO check if this works
+    std::ifstream in("cachedef");
+    int num;
+    in >> num;
+    std::string* lines = new std::string[num];
+    for (int i = 0; i < num; ++i)
+    {
+        while (in.peek() == '#' || in.peek() == '\n') std::getline(in, lines[i]);
+        std::getline(in, lines[i]);
+    }
 
+    // firstLevel = get_cacheSim_from_file("cachedef"); //TODO check if this works
+    int num = get_cacheSim_from_file("cachedef"); //TODO check if this works
+
+    std::cout << num << std::endl;
+    std::cout << "init sym" << std::endl;
     PIN_InitSymbols();
 
     // Initialize PIN library. Print help message if -h(elp) is specified
     // in the command line or the command line is invalid 
+    std::cout << "init pin" << std::endl;
     if( PIN_Init(argc,argv) )
     {
         return 1;
     }
-
 
     // if (KnobFollowCalls)
     // {
     //     std::cerr << "follow calls" << std::endl;
     // }
 
+    std::cout << "ins image" << std::endl;
     IMG_AddInstrumentFunction(ImageLoad, 0);
-
+    std::cout << "ins ins" << std::endl;
     INS_AddInstrumentFunction(Instruction, 0);
 
+    std::cout << "add fini" << std::endl;
     PIN_AddFiniFunction(Fini, 0);
     
-    std::cerr << "starting\n" << std::endl;
+    // std::cerr << "starting\n" << std::endl;
     // Start the program, never returns
+    std::cout << "start" << std::endl;
     PIN_StartProgram();
     
     return 0;
