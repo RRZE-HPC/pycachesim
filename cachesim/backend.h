@@ -85,8 +85,8 @@ void Cache__store(Cache* self, addr_range range, int non_temporal);
 
 void dealloc_cacheSim(Cache*);
 
-// Cache* get_cacheSim_from_file(const char* file);
-int get_cacheSim_from_file(const char* file);
+Cache* get_cacheSim_from_file(const char* file);
+// Cache* get_cacheSim_from_file(char** lines, int size);
 
 #ifndef USE_PIN
 void printStats(Cache* cache);

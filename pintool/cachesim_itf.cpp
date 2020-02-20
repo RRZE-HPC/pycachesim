@@ -2,6 +2,7 @@
 #include "pinMarker.h"
 #include <iostream>
 #include <fstream>
+#include <string.h>
 // #include <stdlib.h>
 
 extern "C"
@@ -35,6 +36,8 @@ VOID ImageLoad(IMG img, VOID *v)
 {
     if (IMG_IsMainExecutable(img))
     {
+        // firstLevel = get_cacheSim_from_file("cachedef"); //TODO check if this works
+
         for( SYM sym= IMG_RegsymHead(img); SYM_Valid(sym); sym = SYM_Next(sym) )
         {
             if (PIN_UndecorateSymbolName ( SYM_Name(sym), UNDECORATION_NAME_ONLY) == "_magic_pin_start")
@@ -176,28 +179,20 @@ VOID printStats(Cache* cache)
 
 VOID Fini(int code, VOID * v)
 {
+    std::cout << "printing" << std::endl;
     printStats(firstLevel);
+    std::cout << "dealloc" << std::endl;
     dealloc_cacheSim(firstLevel);
 }
 
 int main(int argc, char *argv[])
 {
+    std::cout.sync_with_stdio(false);
     std::cout << "starting" << std::endl;
 
-    std::ifstream in("cachedef");
-    int num;
-    in >> num;
-    std::string* lines = new std::string[num];
-    for (int i = 0; i < num; ++i)
-    {
-        while (in.peek() == '#' || in.peek() == '\n') std::getline(in, lines[i]);
-        std::getline(in, lines[i]);
-    }
+    firstLevel = get_cacheSim_from_file("cachedef"); //TODO check if this works
 
-    // firstLevel = get_cacheSim_from_file("cachedef"); //TODO check if this works
-    int num = get_cacheSim_from_file("cachedef"); //TODO check if this works
-
-    std::cout << num << std::endl;
+    // std::cout << num << std::endl;
     std::cout << "init sym" << std::endl;
     PIN_InitSymbols();
 
@@ -209,10 +204,14 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    // if (KnobFollowCalls)
-    // {
-    //     std::cerr << "follow calls" << std::endl;
-    // }
+    if (KnobFollowCalls)
+    {
+        std::cerr << "follow calls" << std::endl;
+    }
+    else
+    {
+        std::cerr << "follow calls" << std::endl;
+    }
 
     std::cout << "ins image" << std::endl;
     IMG_AddInstrumentFunction(ImageLoad, 0);

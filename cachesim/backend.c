@@ -3,14 +3,14 @@
     #include <structmember.h>
 #endif
 
-#include <stdlib.h>
-#include <limits.h>
+// #include <stdlib.h>
 #include "backend.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
- FILE * file;
+//  FILE * file;
 
 unsigned int log2_uint(unsigned int x) {
     unsigned int ans = 0;
@@ -228,8 +228,6 @@ int Cache__load(Cache* self, addr_range range) {
     /*
     Signals request of addr range by higher level. This handles hits and misses.
     */
-    fputs("cache load\n", file);
-    fflush(file);
     self->LOAD.count++;
     self->LOAD.byte += range.length;
     int placement_idx = -1;
@@ -376,8 +374,6 @@ int Cache__load(Cache* self, addr_range range) {
 }
 
 void Cache__store(Cache* self, addr_range range, int non_temporal) {
-    fputs("cache store\n",file);
-    fflush(file);
     self->STORE.count++;
     self->STORE.byte += range.length;
     // Handle range:
@@ -479,43 +475,29 @@ void Cache__store(Cache* self, addr_range range, int non_temporal) {
 
 void dealloc_cacheSim(Cache* cache)
 {
-    fputs("dealloc cachesim\n",file);
-    fflush(file);
+    // fputs("dealloc cachesim\n",file);
+    // fflush(file);
     //TODO free cache hierarchy, i load from != store_to != victims to
     if (cache->load_from != NULL)
         dealloc_cacheSim(cache->load_from);
 
     free(cache->placement);
     free(cache);
-    fclose(file);
+    // fclose(file);
 }
 
-int get_cacheSim_from_file(const char* cache_file)
+Cache* get_cacheSim_from_file(const char* cache_file)
 {
-    // file  = fopen ("mylog.txt","a");
+    // file  = fopen ("mylog.txt","w");
     // fputs("get cachesim\n",file);
     // fflush(file);
     FILE* stream = fopen(cache_file, "r");
-    if (stream == NULL) exit(EXIT_FAILURE);
-    if (ferror(stream)){
-        perror("ferror\n");
-        exit(EXIT_FAILURE);
-    }
-    if (feof(stream)){
-        perror("feof\n");
-        exit(EXIT_FAILURE);
-    } 
-    // size_t len = 0;
-    char line[1024];
-    // char* line = NULL;
-    // ssize_t nread;
-    // int num = fgetc(stream);
-    int num = 3;
-    // char* ret = fgets(line, 1024, stream);
-    // nread = getline(&line, &len, stream);
-    // if (ret == NULL) exit(EXIT_FAILURE);
 
-    // int size = atoi(line);
+    char line[1024];
+    char* ret = fgets(line, 1024, stream);
+    if (ret == NULL) exit(EXIT_FAILURE);
+
+    int size = atoi(line);
 
     Cache* cacheSim[size];
     //buffers to save information, which caches to link at the end
@@ -532,14 +514,14 @@ int get_cacheSim_from_file(const char* cache_file)
     char *token, *key, *value;
     char *saveptr1, *saveptr2;
 
-    fputs("read input file\n",file);
-    fflush(file);
+    // fputs("read input file\n",file);
+    // fflush(file);
     while (fgets(line, 1024, stream) && counter != size)
     {
 
         if (line[0] != '\n' && line[0] != '#')
         {
-            cacheSim[counter] = malloc(sizeof(Cache));
+            cacheSim[counter] = (Cache*) malloc(sizeof(Cache));
             if (&cacheSim[counter] == NULL) exit(EXIT_FAILURE);
 
             token = strtok_r(&line[0], ",", &saveptr1);
@@ -604,8 +586,8 @@ int get_cacheSim_from_file(const char* cache_file)
                 //TODO maybe init more stuff
                 else
                 {
-                    fputs("not recognized option\n",file);
-                    fflush(file);
+                    // fputs("not recognized option\n",file);
+                    // fflush(file);
                     //TODO warning
                 }
 
@@ -614,7 +596,7 @@ int get_cacheSim_from_file(const char* cache_file)
 
             //TODO sanity check if initialized
 
-            cacheSim[counter]->placement = malloc(cacheSim[counter]->sets * cacheSim[counter]->ways * sizeof(cache_entry));
+            cacheSim[counter]->placement = (cache_entry*) malloc(cacheSim[counter]->sets * cacheSim[counter]->ways * sizeof(cache_entry));
             if (cacheSim[counter]->placement == NULL) exit(EXIT_FAILURE);
             for(unsigned int i=0; i<cacheSim[counter]->sets*cacheSim[counter]->ways; i++)
             {
@@ -632,8 +614,8 @@ int get_cacheSim_from_file(const char* cache_file)
     }
 
     //link caches
-    fputs("link caches\n",file);
-    fflush(file);
+    // fputs("link caches\n",file);
+    // fflush(file);
     for (int i = 0; i < size; ++i)
     {
         // fprintf(stdout, "%d:\n  loadfrom: %s\n  storeto: %s\n  victimsto: %s\n",i, load_from_buff[i],store_to_buff[i],victims_to_buff[i]);
@@ -668,8 +650,8 @@ int get_cacheSim_from_file(const char* cache_file)
             if (first_level != NULL)
             {
                 //TODO error
-                fputs("cache that is not first level has no connection\n",file);
-                fflush(file);
+                // fputs("cache that is not first level has no connection\n",file);
+                // fflush(file);
                 exit(EXIT_FAILURE);
             }
             first_level = cacheSim[i];
@@ -678,13 +660,14 @@ int get_cacheSim_from_file(const char* cache_file)
     if (first_level == NULL)
     {
         //TODO error
-        fputs("first level is null\n",file);
-        fflush(file);
+        // fputs("first level is null\n",file);
+        // fflush(file);
         exit(EXIT_FAILURE);
     }
 
     //close file and free stuff
     fclose(stream);
+    // fclose(file);
     for (int i = 0; i < size; ++i)
     {
         free(load_from_buff[i]);
@@ -693,8 +676,6 @@ int get_cacheSim_from_file(const char* cache_file)
     }
 
     return first_level;
-    // fclose(stream);
-    return num;
 }
 
 #ifndef USE_PIN
