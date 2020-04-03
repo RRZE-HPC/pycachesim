@@ -3,6 +3,7 @@
 #include <iostream>
 #include <fstream>
 #include <string.h>
+#include <stdio.h>
 // #include <stdlib.h>
 
 extern "C"
@@ -12,8 +13,7 @@ extern "C"
 
 Cache* firstLevel;
 
-KNOB<bool> KnobFollowCalls(KNOB_MODE_WRITEONCE, "pintool",
-    "follow_calls", "0", "specify if the instrumentation has to follow function calls between the markers");
+KNOB<bool> KnobFollowCalls(KNOB_MODE_WRITEONCE, "pintool", "follow_calls", "0", "specify if the instrumentation has to follow function calls between the markers. Default: false");
 
 ADDRINT startCall;
 ADDRINT startIns;
@@ -190,7 +190,7 @@ int main(int argc, char *argv[])
     std::cout.sync_with_stdio(false);
     std::cout << "starting" << std::endl;
 
-    firstLevel = get_cacheSim_from_file("cachedef"); //TODO check if this works
+    firstLevel = get_cacheSim_from_file("cachedef"); //TODO refine this
 
     // std::cout << num << std::endl;
     std::cout << "init sym" << std::endl;

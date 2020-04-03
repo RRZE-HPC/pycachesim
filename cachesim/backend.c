@@ -494,10 +494,21 @@ Cache* get_cacheSim_from_file(const char* cache_file)
     FILE* stream = fopen(cache_file, "r");
 
     char line[1024];
-    char* ret = fgets(line, 1024, stream);
-    if (ret == NULL) exit(EXIT_FAILURE);
 
-    int size = atoi(line);
+    int size = 0;
+    //get number of required cache objects
+    while (fgets(line, 1024, stream))
+    {
+        if (line[0] != '\n' && line[0] != '#')
+        {
+            size = atoi(line);
+        }
+    }
+    if (size < 1)
+    {
+        //TODO error
+        exit(EXIT_FAILURE);
+    }
 
     Cache* cacheSim[size];
     //buffers to save information, which caches to link at the end
@@ -518,15 +529,18 @@ Cache* get_cacheSim_from_file(const char* cache_file)
     // fflush(file);
     while (fgets(line, 1024, stream) && counter != size)
     {
-
+        //TODO check for windows new line
+        //read line, representing a cache
         if (line[0] != '\n' && line[0] != '#')
         {
             cacheSim[counter] = (Cache*) malloc(sizeof(Cache));
             if (&cacheSim[counter] == NULL) exit(EXIT_FAILURE);
 
+            //key value pairs seperated by ','
             token = strtok_r(&line[0], ",", &saveptr1);
             while(token != NULL)
             {
+                //key and value seperated by '='
                 key = strtok_r(token, "=", &saveptr2);
                 //TODO check for NULL
                 value = strtok_r(NULL, "=\n\r", &saveptr2);
@@ -596,6 +610,7 @@ Cache* get_cacheSim_from_file(const char* cache_file)
 
             //TODO sanity check if initialized
 
+            //init cache
             cacheSim[counter]->placement = (cache_entry*) malloc(cacheSim[counter]->sets * cacheSim[counter]->ways * sizeof(cache_entry));
             if (cacheSim[counter]->placement == NULL) exit(EXIT_FAILURE);
             for(unsigned int i=0; i<cacheSim[counter]->sets*cacheSim[counter]->ways; i++)
@@ -621,24 +636,27 @@ Cache* get_cacheSim_from_file(const char* cache_file)
         // fprintf(stdout, "%d:\n  loadfrom: %s\n  storeto: %s\n  victimsto: %s\n",i, load_from_buff[i],store_to_buff[i],victims_to_buff[i]);
         for (int j = 0; j < size; ++j)
         {
-            //TODO check for name == NULL
-            if (load_from_buff[i] != NULL && strcmp(load_from_buff[i], cacheSim[j]->name) == 0)
-            {
-                cacheSim[i]->load_from = cacheSim[j];
-                ++linkcounter[j];
-            }
-            if (store_to_buff[i] != NULL && strcmp(store_to_buff[i], cacheSim[j]->name) == 0)
-            {
-                cacheSim[i]->store_to = cacheSim[j];
-                ++linkcounter[j];
-            }
-            if (victims_to_buff[i] != NULL && strcmp(victims_to_buff[i], cacheSim[j]->name) == 0)
-            {
-                cacheSim[i]->victims_to = cacheSim[j];
-                ++linkcounter[j];
+            if(cacheSim[j]->name = NULL){
+                if (load_from_buff[i] != NULL && strcmp(load_from_buff[i], cacheSim[j]->name) == 0)
+                {
+                    cacheSim[i]->load_from = cacheSim[j];
+                    ++linkcounter[j];
+                }
+                if (store_to_buff[i] != NULL && strcmp(store_to_buff[i], cacheSim[j]->name) == 0)
+                {
+                    cacheSim[i]->store_to = cacheSim[j];
+                    ++linkcounter[j];
+                }
+                if (victims_to_buff[i] != NULL && strcmp(victims_to_buff[i], cacheSim[j]->name) == 0)
+                {
+                    cacheSim[i]->victims_to = cacheSim[j];
+                    ++linkcounter[j];
+                }
             }
         }
     }
+
+    //TODO sanity check for propper connections
 
     //find first level cache as interface for the cacheSimulator
     Cache* first_level = NULL;
