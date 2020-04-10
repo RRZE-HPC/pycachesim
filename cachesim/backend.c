@@ -10,7 +10,7 @@
 #include <string.h>
 #include <limits.h>
 
-//  FILE * file;
+FILE * file;
 
 unsigned int log2_uint(unsigned int x) {
     unsigned int ans = 0;
@@ -478,9 +478,9 @@ void dealloc_cacheSim(Cache* cache)
     // fputs("dealloc cachesim\n",file);
     // fflush(file);
     //TODO free cache hierarchy, i load from != store_to != victims to
+    //TODO prevent double free
     if (cache->load_from != NULL)
         dealloc_cacheSim(cache->load_from);
-
     free(cache->placement);
     free(cache);
     // fclose(file);
@@ -488,25 +488,22 @@ void dealloc_cacheSim(Cache* cache)
 
 Cache* get_cacheSim_from_file(const char* cache_file)
 {
-    // file  = fopen ("mylog.txt","w");
-    // fputs("get cachesim\n",file);
-    // fflush(file);
+    file  = fopen ("log_cachesim.txt","a");
+    fpprintf(file, "Cache* get_cacheSim_from_file(\"%s\"):\n\n", cache_file);
+    fflush(file);
     FILE* stream = fopen(cache_file, "r");
 
     char line[1024];
 
     int size = 0;
     //get number of required cache objects
-    while (fgets(line, 1024, stream))
-    {
-        if (line[0] != '\n' && line[0] != '#')
-        {
-            size = atoi(line);
-        }
-    }
+    fgets(line, 1024, stream);
+    size = atoi(line);
+
     if (size < 1)
     {
-        //TODO error
+        fprintf(file, "invalid number of caches:%d\n", size);
+        fflush(file);
         exit(EXIT_FAILURE);
     }
 
@@ -525,8 +522,8 @@ Cache* get_cacheSim_from_file(const char* cache_file)
     char *token, *key, *value;
     char *saveptr1, *saveptr2;
 
-    // fputs("read input file\n",file);
-    // fflush(file);
+    fputs("read input file\n",file);
+    fflush(file);
     while (fgets(line, 1024, stream) && counter != size)
     {
         //TODO check for windows new line
@@ -600,9 +597,9 @@ Cache* get_cacheSim_from_file(const char* cache_file)
                 //TODO maybe init more stuff
                 else
                 {
-                    // fputs("not recognized option\n",file);
-                    // fflush(file);
-                    //TODO warning
+                    fprintf(file, "unrecognized parameter:%s\n", key);
+                    fflush(file);
+                    //TODO warning?
                 }
 
                 token = strtok_r(NULL, ",", &saveptr1);
@@ -629,14 +626,15 @@ Cache* get_cacheSim_from_file(const char* cache_file)
     }
 
     //link caches
-    // fputs("link caches\n",file);
-    // fflush(file);
+    fputs("\nlink caches:\n",file);
+    fflush(file);
     for (int i = 0; i < size; ++i)
     {
-        // fprintf(stdout, "%d:\n  loadfrom: %s\n  storeto: %s\n  victimsto: %s\n",i, load_from_buff[i],store_to_buff[i],victims_to_buff[i]);
+        // fprintf(file, "%d:\n  loadfrom: %s\n  storeto: %s\n  victimsto: %s\n\n",i, load_from_buff[i],store_to_buff[i],victims_to_buff[i]);
+        // fflush(file);
         for (int j = 0; j < size; ++j)
         {
-            if(cacheSim[j]->name = NULL){
+            if(cacheSim[j]->name != NULL){
                 if (load_from_buff[i] != NULL && strcmp(load_from_buff[i], cacheSim[j]->name) == 0)
                 {
                     cacheSim[i]->load_from = cacheSim[j];
@@ -662,14 +660,14 @@ Cache* get_cacheSim_from_file(const char* cache_file)
     Cache* first_level = NULL;
     for (int i = 0; i < size; ++i)
     {
-        // fprintf(stdout, "linkcounter %d: %d\n",i,linkcounter[i]);
+        // fprintf(file, "linkcounter %d: %d\n",i,linkcounter[i]);
+        // fflush(file);
         if (linkcounter[i] == 0)
         {
             if (first_level != NULL)
             {
-                //TODO error
-                // fputs("cache that is not first level has no connection\n",file);
-                // fflush(file);
+                fputs("cache that is not first level has no connection! exiting!\n\n",file);
+                fflush(file);
                 exit(EXIT_FAILURE);
             }
             first_level = cacheSim[i];
@@ -677,15 +675,19 @@ Cache* get_cacheSim_from_file(const char* cache_file)
     }
     if (first_level == NULL)
     {
-        //TODO error
-        // fputs("first level is null\n",file);
-        // fflush(file);
+        fputs("first level is null! exiting!\n\n",file);
+        fflush(file);
         exit(EXIT_FAILURE);
     }
 
+    fputs("done\n",file);
+    fflush(file);
+
+    fputs("\nfreeing resources:\n",file);
+    fflush(file);
     //close file and free stuff
     fclose(stream);
-    // fclose(file);
+    
     for (int i = 0; i < size; ++i)
     {
         free(load_from_buff[i]);
@@ -693,6 +695,8 @@ Cache* get_cacheSim_from_file(const char* cache_file)
         free(victims_to_buff[i]);
     }
 
+    fputs("done\n\nreturning cache...\n",file);
+    fclose(file);
     return first_level;
 }
 

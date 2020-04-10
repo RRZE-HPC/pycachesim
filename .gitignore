@@ -62,3 +62,4 @@ pintool/obj-ia32/*
 
 # testing stuff for development
 pintool/tests/*
+pintool/mylog.txt

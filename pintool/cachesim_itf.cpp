@@ -36,7 +36,6 @@ VOID ImageLoad(IMG img, VOID *v)
 {
     if (IMG_IsMainExecutable(img))
     {
-        // firstLevel = get_cacheSim_from_file("cachedef"); //TODO check if this works
 
         for( SYM sym= IMG_RegsymHead(img); SYM_Valid(sym); sym = SYM_Next(sym) )
         {
@@ -185,12 +184,13 @@ VOID Fini(int code, VOID * v)
     dealloc_cacheSim(firstLevel);
 }
 
+//TODO clean up
 int main(int argc, char *argv[])
 {
     std::cout.sync_with_stdio(false);
     std::cout << "starting" << std::endl;
 
-    firstLevel = get_cacheSim_from_file("cachedef"); //TODO refine this
+    firstLevel = get_cacheSim_from_file("cachedef");
 
     // std::cout << num << std::endl;
     std::cout << "init sym" << std::endl;
