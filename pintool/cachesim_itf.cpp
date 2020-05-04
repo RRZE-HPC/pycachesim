@@ -14,6 +14,7 @@ extern "C"
 Cache* firstLevel;
 
 KNOB<bool> KnobFollowCalls(KNOB_MODE_WRITEONCE, "pintool", "follow_calls", "0", "specify if the instrumentation has to follow function calls between the markers. Default: false");
+KNOB<std::string> KnobCacheFile(KNOB_MODE_WRITEONCE, "pintool", "cache_file", "cachedef", "specify if the file, where the cache object is defined. Default: \"cachedef\"");
 
 ADDRINT startCall;
 ADDRINT startIns;
@@ -187,43 +188,44 @@ VOID Fini(int code, VOID * v)
 //TODO clean up
 int main(int argc, char *argv[])
 {
-    std::cout.sync_with_stdio(false);
-    std::cout << "starting" << std::endl;
-
-    firstLevel = get_cacheSim_from_file("cachedef");
-
     // std::cout << num << std::endl;
-    std::cout << "init sym" << std::endl;
+    // std::cout << "init sym" << std::endl;
     PIN_InitSymbols();
 
     // Initialize PIN library. Print help message if -h(elp) is specified
     // in the command line or the command line is invalid 
-    std::cout << "init pin" << std::endl;
+    // std::cout << "init pin" << std::endl;
     if( PIN_Init(argc,argv) )
     {
         return 1;
     }
 
-    if (KnobFollowCalls)
+    // std::cout.sync_with_stdio(false);
+    std::cout << KnobCacheFile.Value() << std::endl;
+    // std::cout <<  KNOB_BASE::StringKnobSummary() << std::endl;
+
+    firstLevel = get_cacheSim_from_file(KnobCacheFile.Value().c_str());
+
+    if (firstLevel == NULL)
     {
-        std::cerr << "follow calls" << std::endl;
-    }
-    else
-    {
-        std::cerr << "follow calls" << std::endl;
+        std::cerr << "initialization of cache object went wrong!\nPlease check the logfile for details.\n\nexiting...\n" << std::endl;
+        exit(EXIT_FAILURE);
     }
 
-    std::cout << "ins image" << std::endl;
+    // if (KnobFollowCalls.Value())
+    // {
+    //     std::cerr << "follow calls" << std::endl;
+    // }
+    // else
+    // {
+    //     std::cerr << "not follow calls" << std::endl;
+    // }
+
     IMG_AddInstrumentFunction(ImageLoad, 0);
-    std::cout << "ins ins" << std::endl;
     INS_AddInstrumentFunction(Instruction, 0);
-
-    std::cout << "add fini" << std::endl;
     PIN_AddFiniFunction(Fini, 0);
     
-    // std::cerr << "starting\n" << std::endl;
     // Start the program, never returns
-    std::cout << "start" << std::endl;
     PIN_StartProgram();
     
     return 0;

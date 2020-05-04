@@ -477,8 +477,8 @@ void dealloc_cacheSim(Cache* cache)
 {
     // fputs("dealloc cachesim\n",file);
     // fflush(file);
-    //TODO free cache hierarchy, i load from != store_to != victims to
-    //TODO prevent double free
+    //TODO free cache hierarchy, i load from != store_to != victims_to (breaks for skipping store_to or victims_to)
+    //TODO prevent double free in case of circular cache references. not necessary?
     if (cache->load_from != NULL)
         dealloc_cacheSim(cache->load_from);
     free(cache->placement);
@@ -488,8 +488,8 @@ void dealloc_cacheSim(Cache* cache)
 
 Cache* get_cacheSim_from_file(const char* cache_file)
 {
-    file  = fopen ("log_cachesim.txt","a");
-    fpprintf(file, "Cache* get_cacheSim_from_file(\"%s\"):\n\n", cache_file);
+    file  = fopen ("log_cachesim","w");
+    fprintf(file, "Cache* get_cacheSim_from_file(\"%s\"):\n\n", cache_file);
     fflush(file);
     FILE* stream = fopen(cache_file, "r");
 
@@ -504,7 +504,7 @@ Cache* get_cacheSim_from_file(const char* cache_file)
     {
         fprintf(file, "invalid number of caches:%d\n", size);
         fflush(file);
-        exit(EXIT_FAILURE);
+        return NULL;
     }
 
     Cache* cacheSim[size];
@@ -524,23 +524,40 @@ Cache* get_cacheSim_from_file(const char* cache_file)
 
     fputs("read input file\n",file);
     fflush(file);
+    int linecounter = 1;
     while (fgets(line, 1024, stream) && counter != size)
     {
-        //TODO check for windows new line
+        ++linecounter;
         //read line, representing a cache
-        if (line[0] != '\n' && line[0] != '#')
+        if (line[0] != '\n' && line[0] != '\r' && line[0] != '#')
         {
-            cacheSim[counter] = (Cache*) malloc(sizeof(Cache));
-            if (&cacheSim[counter] == NULL) exit(EXIT_FAILURE);
+            cacheSim[counter] = (Cache*) calloc(1, sizeof(Cache));
+            if (&cacheSim[counter] == NULL)
+            {
+                fprintf(file, "allocation of memory for cache object failed\n");
+                fflush(file);
+                return NULL;
+            }
 
             //key value pairs seperated by ','
-            token = strtok_r(&line[0], ",", &saveptr1);
+            token = strtok_r(&line[0], ",\n\r", &saveptr1);
             while(token != NULL)
             {
                 //key and value seperated by '='
                 key = strtok_r(token, "=", &saveptr2);
-                //TODO check for NULL
+                if (key == NULL)
+                {
+                    fprintf(file, "token without '=' in line %d\n", linecounter);
+                    fflush(file);
+                    continue;
+                }
                 value = strtok_r(NULL, "=\n\r", &saveptr2);
+                if (value == NULL)
+                {
+                    fprintf(file, "token without value in line %d\n", linecounter);
+                    fflush(file);
+                    continue;
+                }
                 
                 if (strcmp(key, "name") == 0)
                 {
@@ -557,6 +574,18 @@ Cache* get_cacheSim_from_file(const char* cache_file)
                 else if (strcmp(key, "cl_size") == 0)
                 {
                     cacheSim[counter]->cl_size = atoi(value);
+                }
+                else if (strcmp(key, "cl_bits") == 0)
+                {
+                    cacheSim[counter]->cl_bits = atoi(value);
+                }
+                else if (strcmp(key, "subblock_size") == 0)
+                {
+                    cacheSim[counter]->subblock_size = atoi(value);
+                }
+                else if (strcmp(key, "subblock_bits") == 0)
+                {
+                    cacheSim[counter]->subblock_bits = atoi(value);
                 }
                 else if (strcmp(key, "replacement_policy_id") == 0)
                 {
@@ -594,29 +623,56 @@ Cache* get_cacheSim_from_file(const char* cache_file)
                 {
                     cacheSim[counter]->swap_on_load = atoi(value);
                 }
-                //TODO maybe init more stuff
                 else
                 {
                     fprintf(file, "unrecognized parameter:%s\n", key);
                     fflush(file);
-                    //TODO warning?
                 }
 
                 token = strtok_r(NULL, ",", &saveptr1);
             }
 
-            //TODO sanity check if initialized
+            if(cacheSim[counter]->name == NULL)
+            {
+                fprintf(file, "cache with uninitialized name\n");
+                fflush(file);
+                return NULL;
+            }
+            if(cacheSim[counter]->sets == 0)
+            {
+                fprintf(file, "cache with uninitialized sets\n");
+                fflush(file);
+                return NULL;
+            }
+            if(cacheSim[counter]->ways == 0)
+            {
+                fprintf(file, "cache with uninitialized ways\n");
+                fflush(file);
+                return NULL;
+            }
+            //TODO is this needed?
+            // if(cacheSim[counter]->cl_size == 0)
+            // {
+            //     fprintf(file, "cache with uninitialized cl_size\n");
+            //     fflush(file);
+            //     return NULL;
+            // }
 
             //init cache
             cacheSim[counter]->placement = (cache_entry*) malloc(cacheSim[counter]->sets * cacheSim[counter]->ways * sizeof(cache_entry));
-            if (cacheSim[counter]->placement == NULL) exit(EXIT_FAILURE);
+            if (cacheSim[counter]->placement == NULL)
+            {
+                fprintf(file, "allocation of memory for cache object failed\n");
+                fflush(file);
+                return NULL;
+            }
             for(unsigned int i=0; i<cacheSim[counter]->sets*cacheSim[counter]->ways; i++)
             {
                 cacheSim[counter]->placement[i].invalid = 1;
                 cacheSim[counter]->placement[i].dirty = 0;
             }
 
-            //TODO check if these 2 lines should be this way
+            //TODO check if these 2 lines should be this way, or check for previous initialization?
             cacheSim[counter]->cl_bits = log2_uint(cacheSim[counter]->cl_size);
             cacheSim[counter]->subblock_bitfield = NULL;
 
@@ -668,7 +724,7 @@ Cache* get_cacheSim_from_file(const char* cache_file)
             {
                 fputs("cache that is not first level has no connection! exiting!\n\n",file);
                 fflush(file);
-                exit(EXIT_FAILURE);
+                return NULL;
             }
             first_level = cacheSim[i];
         }
@@ -677,7 +733,7 @@ Cache* get_cacheSim_from_file(const char* cache_file)
     {
         fputs("first level is null! exiting!\n\n",file);
         fflush(file);
-        exit(EXIT_FAILURE);
+        return NULL;
     }
 
     fputs("done\n",file);
