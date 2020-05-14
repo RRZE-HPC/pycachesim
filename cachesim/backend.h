@@ -23,8 +23,8 @@ typedef struct addr_range {
 } addr_range;
 
 struct stats {
-    unsigned int count;
-    unsigned int byte;
+    unsigned long count;
+    unsigned long byte;
     //unsigned int cl; // might be used later
 };
 

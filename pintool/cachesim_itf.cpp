@@ -167,11 +167,11 @@ VOID Instruction(INS ins, VOID *v)
 VOID printStats(Cache* cache)
 {
     std::cout << std::string(cache->name) << "\n";
-    std::cout << "LOAD: " << cache->LOAD.count << " size: " << cache->LOAD.byte << "B\n";
-    std::cout << "STORE: " << cache->STORE.count << " size: " << cache->STORE.byte << "B\n";
-    std::cout << "HIT: " << cache->HIT.count << " size: " << cache->HIT.byte << "B\n";
-    std::cout << "MISS: " << cache->MISS.count << " size: " << cache->MISS.byte << "B\n";
-    std::cout << "EVICT: " << cache->EVICT.count << " size: " << cache->EVICT.byte << "B\n";
+    std::cout << "LOAD: " << cache->LOAD.count << " size: " << cache->LOAD.byte << " B\n";
+    std::cout << "STORE: " << cache->STORE.count << " size: " << cache->STORE.byte << " B\n";
+    std::cout << "HIT: " << cache->HIT.count << " size: " << cache->HIT.byte << " B\n";
+    std::cout << "MISS: " << cache->MISS.count << " size: " << cache->MISS.byte << " B\n";
+    std::cout << "EVICT: " << cache->EVICT.count << " size: " << cache->EVICT.byte << " B\n";
     std::cout << "\n";
     if (cache->load_from != NULL)
         printStats(cache->load_from);

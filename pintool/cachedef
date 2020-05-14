@@ -5,7 +5,7 @@
 # key-value pairs are seperated by ',' without whitespaces
 # load_from, store_to, victims_to have to be values equal to the name of one of the other cache levels
 # the name of a cache level must be unique
-# replacement policy: 
+# replacement policy: 0 = FIFO, 1 = LRU, 2 = MRU, 3 = RR
 name=L1,sets=64,ways=8,cl_size=64,replacement_policy_id=1,write_back=1,write_allocate=1,subblock_size=64,load_from=L2,store_to=L2
 name=L2,sets=512,ways=8,cl_size=64,replacement_policy_id=1,write_back=1,write_allocate=1,load_from=L3,store_to=L3
 name=L3,sets=9216,ways=16,cl_size=64,replacement_policy_id=1,write_back=1,write_allocate=1
