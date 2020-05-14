@@ -27,17 +27,17 @@ static void Cache_dealloc(Cache* self) {
 static PyMemberDef Cache_members[] = {
     {"name", T_STRING, offsetof(Cache, name), 0,
      "name of cache level"},
-    {"sets", T_UINT, offsetof(Cache, sets), 0,
+    {"sets", T_ULONG, offsetof(Cache, sets), 0,
      "number of sets available"},
-    {"ways", T_UINT, offsetof(Cache, ways), 0,
+    {"ways", T_ULONG, offsetof(Cache, ways), 0,
      "number of ways available"},
-    {"cl_size", T_UINT, offsetof(Cache, cl_size), 0,
+    {"cl_size", T_ULONG, offsetof(Cache, cl_size), 0,
      "number of bytes in a cacheline"},
-    {"cl_bits", T_UINT, offsetof(Cache, cl_bits), 0,
+    {"cl_bits", T_ULONG, offsetof(Cache, cl_bits), 0,
      "number of bits used to identiy individual bytes in a cacheline"},
-    {"subblock_size", T_UINT, offsetof(Cache, subblock_size), 0,
+    {"subblock_size", T_ULONG, offsetof(Cache, subblock_size), 0,
      "number of bytes per subblock (must be a devisor of cl_size)"},
-    {"subblock_bits", T_UINT, offsetof(Cache, subblock_bits), 0,
+    {"subblock_bits", T_ULONG, offsetof(Cache, subblock_bits), 0,
      "number of bits needed to identify subblocks (= number of subblocks per cacheline)"},
     {"replacement_policy_id", T_INT, offsetof(Cache, replacement_policy_id), 0,
      "replacement strategy of cachlevel"},
@@ -53,25 +53,25 @@ static PyMemberDef Cache_members[] = {
      "store parent Cache object (cache level which is closer to main memory)"},
     {"victims_to", T_OBJECT, offsetof(Cache, victims_to), 0,
      "Cache object where victims will be send to (closer to main memory, None if victims vanish)"},
-    {"LOAD_count", T_UINT, offsetof(Cache, LOAD.count), 0,
+    {"LOAD_count", T_ULONGLONG, offsetof(Cache, LOAD.count), 0,
      "number of loads performed"},
-    {"LOAD_byte", T_UINT, offsetof(Cache, LOAD.byte), 0,
+    {"LOAD_byte", T_ULONGLONG, offsetof(Cache, LOAD.byte), 0,
      "number of bytes loaded"},
-    {"STORE_count", T_UINT, offsetof(Cache, STORE.count), 0,
+    {"STORE_count", T_ULONGLONG, offsetof(Cache, STORE.count), 0,
      "number of stores performed"},
-    {"STORE_byte", T_UINT, offsetof(Cache, STORE.byte), 0,
+    {"STORE_byte", T_ULONGLONG, offsetof(Cache, STORE.byte), 0,
      "number of bytes stored"},
-    {"HIT_count", T_UINT, offsetof(Cache, HIT.count), 0,
+    {"HIT_count", T_ULONGLONG, offsetof(Cache, HIT.count), 0,
      "number of cache hits"},
-    {"HIT_byte", T_UINT, offsetof(Cache, HIT.byte), 0,
+    {"HIT_byte", T_ULONGLONG, offsetof(Cache, HIT.byte), 0,
      "number of bytes that were cache hits"},
-    {"MISS_count", T_UINT, offsetof(Cache, MISS.count), 0,
+    {"MISS_count", T_ULONGLONG, offsetof(Cache, MISS.count), 0,
      "number of misses"},
-    {"MISS_byte", T_UINT, offsetof(Cache, MISS.byte), 0,
+    {"MISS_byte", T_ULONGLONG, offsetof(Cache, MISS.byte), 0,
      "number of bytes missed"},
-    {"EVICT_count", T_UINT, offsetof(Cache, EVICT.count), 0,
+    {"EVICT_count", T_ULONGLONG, offsetof(Cache, EVICT.count), 0,
      "number of evicts"},
-    {"EVICT_byte", T_UINT, offsetof(Cache, EVICT.byte), 0,
+    {"EVICT_byte", T_ULONGLONG, offsetof(Cache, EVICT.byte), 0,
      "number of bytes evicted"},
     {"verbosity", T_INT, offsetof(Cache, verbosity), 0,
      "verbosity level of output"},
@@ -272,13 +272,13 @@ static PyObject* Cache_loadstore(Cache* self, PyObject *args, PyObject *kwds)
 }
 
 static PyObject* Cache_contains(Cache* self, PyObject *args, PyObject *kwds) {
-    unsigned int addr;
+    unsigned long addr;
 
     static char *kwlist[] = {"addr", NULL};
     PyArg_ParseTupleAndKeywords(args, kwds, "I", kwlist, &addr);
 
-    unsigned int cl_id = Cache__get_cacheline_id(self, addr);
-    unsigned int set_id = Cache__get_set_id(self, cl_id);
+    unsigned long cl_id = Cache__get_cacheline_id(self, addr);
+    unsigned long set_id = Cache__get_set_id(self, cl_id);
 
     for(int i=0; i<self->ways; i++) {
         if(self->placement[set_id*self->ways+i].invalid == 0 &&
@@ -517,7 +517,7 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
     // should we introduce a memory object in c?
 
     self->placement = PyMem_New(struct cache_entry, self->sets*self->ways);
-    for(unsigned int i=0; i<self->sets*self->ways; i++) {
+    for(unsigned long i=0; i<self->sets*self->ways; i++) {
         self->placement[i].invalid = 1;
         self->placement[i].dirty = 0;
     }
