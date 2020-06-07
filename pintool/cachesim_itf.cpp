@@ -4,24 +4,29 @@
 #include <fstream>
 #include <string.h>
 #include <stdio.h>
-// #include <stdlib.h>
 
 extern "C"
 {
 #include "backend.h"
 }
 
+//cache object for the load and store calls of the instrumentation functions
 Cache* firstLevel;
 
+//pin way of adding commandline parameters
+//bool, if function calls are in the instrumented region or not
 KNOB<bool> KnobFollowCalls(KNOB_MODE_WRITEONCE, "pintool", "follow_calls", "0", "specify if the instrumentation has to follow function calls between the markers. Default: false");
+//path to the cache definition file
 KNOB<std::string> KnobCacheFile(KNOB_MODE_WRITEONCE, "pintool", "cache_file", "cachedef", "specify if the file, where the cache object is defined. Default: \"cachedef\"");
 
+//instruction and function addresses as markers for the instrumentation
 ADDRINT startCall;
 ADDRINT startIns;
 ADDRINT stopCall;
 ADDRINT stopIns;
 
 
+//callback functions to activate and deactivate calls to the cache simulator on memory instructions. only needed when following function calls
 LOCALFUN VOID activate()
 {
     std::cerr << "activate" << std::endl;
@@ -33,11 +38,13 @@ LOCALFUN VOID deactivate()
     _pinMarker_active = false;
 }
 
+//executed once. finds the magic pin marker functions and calls to them
 VOID ImageLoad(IMG img, VOID *v)
 {
     if (IMG_IsMainExecutable(img))
     {
 
+        //find addresses of the start and stop function in the symbol table
         for( SYM sym= IMG_RegsymHead(img); SYM_Valid(sym); sym = SYM_Next(sym) )
         {
             if (PIN_UndecorateSymbolName ( SYM_Name(sym), UNDECORATION_NAME_ONLY) == "_magic_pin_start")
@@ -50,6 +57,7 @@ VOID ImageLoad(IMG img, VOID *v)
             }
         }
 
+        //find call instructions to the start and stop functions and keep their instruction address
         for( SEC sec= IMG_SecHead(img); SEC_Valid(sec); sec = SEC_Next(sec) )
         {
                 for( RTN rtn= SEC_RtnHead(sec); RTN_Valid(rtn); rtn = RTN_Next(rtn) )
@@ -92,30 +100,33 @@ VOID ImageLoad(IMG img, VOID *v)
     }
 }
 
+//callbacks for loads and stores, containing check if current control flow is inside instrumented region (needed for following calls)
 LOCALFUN VOID MemRead_check(UINT64 addr, UINT32 size)
 {
     if (_pinMarker_active)
         Cache__load(firstLevel, {addr, size});
 }
-
-LOCALFUN VOID MemRead(UINT64 addr, UINT32 size)
-{
-    Cache__load(firstLevel, {addr, size});
-}
-
 LOCALFUN VOID MemWrite_check(UINT64 addr, UINT32 size)
 {
     if (_pinMarker_active)
         Cache__store(firstLevel, {addr, size},0);
 }
 
+//callbacks for loads and stores, without checks
+LOCALFUN VOID MemRead(UINT64 addr, UINT32 size)
+{
+    Cache__load(firstLevel, {addr, size});
+}
 LOCALFUN VOID MemWrite(UINT64 addr, UINT32 size)
 {
     Cache__store(firstLevel, {addr, size},0);
 }
 
+// instrumentation routine inserting the callbacks to memory instructions
 VOID Instruction(INS ins, VOID *v)
 {
+    // when following calls, each instruction has to be instrumented, containing a check if control flow is inside marked region
+    // the magic start and stop functions set this flag
     if (KnobFollowCalls)
     {
         const AFUNPTR readFun = (AFUNPTR) MemRead_check;
@@ -139,6 +150,9 @@ VOID Instruction(INS ins, VOID *v)
                 IARG_END);
         }
     }
+
+    // in case function calls do not need to be followed, only instructions inside the marked region need to be instrumented
+    // this slightly decreases the overhead introduces by the pin callback
     else if(INS_Address(ins) > startIns && INS_Address(ins) < stopIns)
     {
         const AFUNPTR readFun = (AFUNPTR) MemRead;
@@ -164,6 +178,7 @@ VOID Instruction(INS ins, VOID *v)
     }
 }
 
+// function to print the cache stats (needed, as the one from the cachesimulator does not work with pin)
 VOID printStats(Cache* cache)
 {
     std::cout << std::string(cache->name) << "\n";
@@ -177,49 +192,36 @@ VOID printStats(Cache* cache)
         printStats(cache->load_from);
 }
 
+// print stats, when instrumented program exits
 VOID Fini(int code, VOID * v)
 {
-    std::cout << "printing" << std::endl;
     printStats(firstLevel);
-    std::cout << "dealloc" << std::endl;
-    dealloc_cacheSim(firstLevel);
+    // not needed? and could break for more complicated cache configurations
+    // dealloc_cacheSim(firstLevel);
 }
 
-//TODO clean up
 int main(int argc, char *argv[])
 {
-    // std::cout << num << std::endl;
-    // std::cout << "init sym" << std::endl;
     PIN_InitSymbols();
 
     // Initialize PIN library. Print help message if -h(elp) is specified
     // in the command line or the command line is invalid 
-    // std::cout << "init pin" << std::endl;
     if( PIN_Init(argc,argv) )
     {
         return 1;
     }
 
-    // std::cout.sync_with_stdio(false);
-    std::cout << KnobCacheFile.Value() << std::endl;
-    // std::cout <<  KNOB_BASE::StringKnobSummary() << std::endl;
-
+    //get cachesim exits with failure on errors. in that case, the log file has to be checked
     firstLevel = get_cacheSim_from_file(KnobCacheFile.Value().c_str());
 
-    if (firstLevel == NULL)
+    if (KnobFollowCalls.Value())
     {
-        std::cerr << "initialization of cache object went wrong!\nPlease check the logfile for details.\n\nexiting...\n" << std::endl;
-        exit(EXIT_FAILURE);
+        std::cerr << "following of function calls enabled\n" << std::endl;
     }
-
-    // if (KnobFollowCalls.Value())
-    // {
-    //     std::cerr << "follow calls" << std::endl;
-    // }
-    // else
-    // {
-    //     std::cerr << "not follow calls" << std::endl;
-    // }
+    else
+    {
+        std::cerr << "following of function calls disabled\n" << std::endl;
+    }
 
     IMG_AddInstrumentFunction(ImageLoad, 0);
     INS_AddInstrumentFunction(Instruction, 0);
