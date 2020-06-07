@@ -10,11 +10,12 @@
 #include <string.h>
 #include <limits.h>
 
+#ifndef NO_PYTHON
+
 struct module_state {
     PyObject *error;
 };
 
-#ifndef NO_PYTHON
 
 #if PY_MAJOR_VERSION >= 3
 #define GETSTATE(m) ((struct module_state*)PyModule_GetState(m))
@@ -1278,6 +1279,10 @@ Cache* get_cacheSim_from_file(const char* cache_file)
                 fflush(file);
                 exit(EXIT_FAILURE);
             }
+            if(cacheSim[counter]->subblock_size == 0)
+            {
+                cacheSim[counter]->subblock_size = cacheSim[counter]->cl_size;
+            }
             //TODO more sanity checks?
 
             //Copy paste from pyinterface.c initialization:
@@ -1304,8 +1309,7 @@ Cache* get_cacheSim_from_file(const char* cache_file)
             if(cacheSim[counter]->write_combining && cacheSim[counter]->subblock_size != cacheSim[counter]->cl_size) {
                 // Subblocking will be used:
                 // since char is used as type, we need upper(subblock_bits/8) chars per placement
-                cacheSim[counter]->subblock_bitfield = PyMem_New(
-                    char, BITNSLOTS(cacheSim[counter]->sets*cacheSim[counter]->ways*cacheSim[counter]->subblock_bits));
+                cacheSim[counter]->subblock_bitfield = (char*) malloc(BITNSLOTS(cacheSim[counter]->sets*cacheSim[counter]->ways*cacheSim[counter]->subblock_bits) * sizeof(char));
                 // Clear all bits
                 for(int i=0; i<BITNSLOTS(cacheSim[counter]->sets*cacheSim[counter]->ways*cacheSim[counter]->subblock_bits); i++) {
                     BITCLEAR(cacheSim[counter]->subblock_bitfield, i);
