@@ -76,7 +76,7 @@ int Cache__load(Cache* self, addr_range range);
 
 void Cache__store(Cache* self, addr_range range, int non_temporal);
 
-//!experimental
+//!might break for complicated cache structures
 void dealloc_cacheSim(Cache*);
 
 Cache* get_cacheSim_from_file(const char* file);
