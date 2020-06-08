@@ -61,5 +61,5 @@ pintool/obj-intel64/*
 pintool/obj-ia32/*
 
 # testing stuff for development
-pintool/tests/*
-pintool/mylog.txt
+pintool/tests/gapbs
+pintool/tests/measurements
