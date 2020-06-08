@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "pinMarker.h"
+#include "../pinMarker.h"
 
 
 int main(int argc, char** argv)
