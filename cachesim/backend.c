@@ -1234,7 +1234,7 @@ Cache* get_cacheSim_from_file(const char* cache_file)
                 {
                     store_to_buff[counter] = strdup(value);
                 }
-                else if (strcmp(key, "victms_to") == 0)
+                else if (strcmp(key, "victims_to") == 0)
                 {
                     victims_to_buff[counter] = strdup(value);
                 }

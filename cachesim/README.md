@@ -20,8 +20,8 @@ name=L3,sets=9216,ways=16,cl_size=64,replacement_policy_id=1,write_back=1,write_
 
 - the first line must contain the number of ache levels
 - each line, that is not empty and that does not start with '#' will be considered a cache level
-- each key and value are seperated by '='
-- key-value pairs are seperated by ',' without whitespaces
+- each key and value are separated by '='
+- key-value pairs are separated by ',' without whitespaces
 - load_from, store_to, victims_to have to be values equal to the name of one of the other cache levels
 - the name of a cache level must be unique
 - possible keys are: 
@@ -41,7 +41,7 @@ name=L3,sets=9216,ways=16,cl_size=64,replacement_policy_id=1,write_back=1,write_
   |swap_on_load|bool|
   |load_from|string|
   |store_to|string|
-  |victms_to|string|
+  |victims_to|string|
 
 ### Creating and Using the Cache Object
 
