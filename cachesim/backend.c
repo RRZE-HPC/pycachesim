@@ -1226,10 +1226,6 @@ Cache* get_cacheSim_from_file(const char* cache_file)
                 {
                     cacheSim[counter]->write_combining = atoi(value);
                 }
-                else if (strcmp(key, "subblock_size") == 0)
-                {
-                    cacheSim[counter]->subblock_size = atoi(value);
-                }
                 else if (strcmp(key, "load_from") == 0)
                 {
                     load_from_buff[counter] = strdup(value);
