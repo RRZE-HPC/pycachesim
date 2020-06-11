@@ -4,13 +4,13 @@ Provides access to stripped down functionalities of pycachesim using C.
 
 ## Usage
 
-After including the backend header, a function to create a cache object, functions to issue load and store instructions to the cache and a function to print the stats of the cache to stdout will be available. The backend then has to be compiled and linked. For the creation of the cache object, an ASCII file containing the properties of the cache ahas to be provided.
+After including the backend header, a function to create a cache object, functions to issue load and store instructions to the cache and a function to print the stats of the cache to stdout will be available. The backend then has to be compiled and linked. For the creation of the cache object, an ASCII file containing the properties of the cache has to be provided.
 
 ### Cache Definition File
 
-Example for an Intel Intel(R) Xeon(R) CPU E5-2695 v3 with activated CoD mode:
+Example for an Intel(R) Xeon(R) E5-2695 v3 with activated CoD mode:
 
-```
+```sh
 3
 # this line will be ignored
 name=L1,sets=64,ways=8,cl_size=64,replacement_policy_id=1,write_back=1,write_allocate=1,subblock_size=64,load_from=L2,store_to=L2
@@ -48,7 +48,7 @@ name=L3,sets=9216,ways=16,cl_size=64,replacement_policy_id=1,write_back=1,write_
 A cache object can be created with
 
 ```C
-Cache* cache = get_cacheSim_from_file("/PATH/TO/CACHE/DEFINITION/FILE");
+Cache* cache = get_cacheSim_from_file("<path to cache definition file>");
 ```
 
 To issue load and stores to the cache, an address range struct is needed:
@@ -89,7 +89,7 @@ gcc -DNO_PYTHON -o example example.c backend.o
 
 ### Example
 
-An example can be found in the ```test_c_api```
+An example can be found in the ```test_c_api``` directory.
 
 Build the example inside this directory with
 
