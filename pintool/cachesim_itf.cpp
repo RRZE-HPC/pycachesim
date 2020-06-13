@@ -20,10 +20,10 @@ KNOB<bool> KnobFollowCalls(KNOB_MODE_WRITEONCE, "pintool", "follow_calls", "0", 
 KNOB<std::string> KnobCacheFile(KNOB_MODE_WRITEONCE, "pintool", "cache_file", "cachedef", "specify if the file, where the cache object is defined. Default: \"cachedef\"");
 
 //instruction and function addresses as markers for the instrumentation
-ADDRINT startCall;
-ADDRINT startIns;
-ADDRINT stopCall;
-ADDRINT stopIns;
+ADDRINT startCall = 0;
+ADDRINT startIns = 0;
+ADDRINT stopCall = 0;
+ADDRINT stopIns = 0;
 
 
 //callback functions to activate and deactivate calls to the cache simulator on memory instructions. only needed when following function calls
@@ -57,6 +57,14 @@ VOID ImageLoad(IMG img, VOID *v)
             }
         }
 
+        if (startCall == 0 || stopCall == 0)
+        {
+            std::cerr << "Missing addresses for start and stop function!" << std::endl;
+            exit(EXIT_FAILURE);
+        }
+
+        int startCallCtr = 0;
+        int stopCallCtr = 0;
         //find call instructions to the start and stop functions and keep their instruction address
         for( SEC sec= IMG_SecHead(img); SEC_Valid(sec); sec = SEC_Next(sec) )
         {
@@ -70,8 +78,10 @@ VOID ImageLoad(IMG img, VOID *v)
                         {
                             if (INS_DirectControlFlowTargetAddress(ins) == startCall)
                             {
+                                startCallCtr++;
                                 if (KnobFollowCalls)
                                 {
+                                    // needed. activation and deactivation of the magic start and stop functions does not work
                                     const AFUNPTR Activate = (AFUNPTR) activate;
                                     INS_InsertPredicatedCall(ins, IPOINT_BEFORE, Activate, IARG_END);
                                 }
@@ -82,8 +92,10 @@ VOID ImageLoad(IMG img, VOID *v)
                             }
                             if (INS_DirectControlFlowTargetAddress(ins) == stopCall)
                             {
+                                stopCallCtr++;
                                 if (KnobFollowCalls)
                                 {
+                                    // needed. activation and deactivation of the magic start and stop functions does not work
                                     const AFUNPTR Deactivate = (AFUNPTR) deactivate;
                                     INS_InsertPredicatedCall(ins, IPOINT_BEFORE, Deactivate, IARG_END);
                                 }
@@ -96,6 +108,17 @@ VOID ImageLoad(IMG img, VOID *v)
                     }
                     RTN_Close(rtn);
                 }
+        }
+
+        if (startCallCtr > 1 || stopCallCtr > 1)
+        {
+            std::cerr << "Too many calls to start/stop functions found! Only one marked code region is supported." << std::endl;
+            exit(EXIT_FAILURE);
+        }
+        else if (startCallCtr < 1 || stopCallCtr < 1)
+        {
+            std::cerr << "Not enough calls to start/stop functions found! Please mar a code region in the code." << std::endl;
+            exit(EXIT_FAILURE);
         }
     }
 }
