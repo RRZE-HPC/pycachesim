@@ -496,7 +496,8 @@ static void Cache__store(Cache* self, addr_range range, int non_temporal) {
         if(self->write_allocate == 1 && non_temporal == 0) {
             // Write-allocate policy
 
-            // Make sure line is loaded into cache (this will produce HITs and MISSes):
+            // Make sure line is loaded into cache (this will produce HITs and MISSes, iff it is 
+            // not present in this cache):
             if(location == -1) {
                 // TODO does this also make sens if store with write-allocate and MISS happens on L2?
                 // or would this inject byte loads instead of CL loads into the statistic
