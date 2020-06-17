@@ -17,10 +17,10 @@ int main(int argc, char** argv)
 
 	for (unsigned int i = 0; i < size; ++i)
 	{
-		a[i] = 1.02;
+		a[i] = 1.01;
 		b[i] = 1.02;
-		c[i] = 1.02;
-		d[i] = 1.02;
+		c[i] = 1.03;
+		d[i] = 1.04;
 	}
 
 	_magic_pin_start();
@@ -42,7 +42,7 @@ int main(int argc, char** argv)
 
 	for (unsigned int i = 0; i < size; ++i)
 	{
-		a[i] = 1.02;
+		a[i] = 1.01;
 		b[i] = 1.02;
 	}
 
@@ -61,9 +61,9 @@ int main(int argc, char** argv)
 
 	for (unsigned int i = 0; i < size; ++i)
 	{
-		a[i] = 1.02;
+		a[i] = 1.01;
 		b[i] = 1.02;
-		c[i] = 1.02;
+		c[i] = 1.03;
 	}
 
 	for(unsigned int i = 0; i < size; ++i)
@@ -81,8 +81,8 @@ int main(int argc, char** argv)
 
 	for (unsigned int i = 0; i < size; ++i)
 	{
-		a[i] = 1.02;
-		b[i] = 1.01;
+		a[i] = 1.01;
+		b[i] = 1.02;
 	}
 
 	for(unsigned int i = 0; i < size; ++i)
