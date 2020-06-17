@@ -32,10 +32,11 @@ int main(int argc, char** argv)
 	free(b);
 	free(c);
 	free(d);
+
 }
 {
 	
-	//scale / update
+	//scale
 	double* a =(double*)malloc(size*sizeof(double));
 	double* b =(double*)malloc(size*sizeof(double));
 	double s = 0.98;
@@ -51,6 +52,7 @@ int main(int argc, char** argv)
 	
 	free(a);
 	free(b);
+
 }
 {
 
@@ -90,6 +92,7 @@ int main(int argc, char** argv)
 	
 	free(a);
 	free(b);
+
 }
 
 }
