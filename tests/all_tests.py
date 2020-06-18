@@ -5,6 +5,7 @@ import sys
 suite = unittest.TestLoader().loadTestsFromNames(
     [
         'test',
+        'vis_tests',
     ]
 )
 

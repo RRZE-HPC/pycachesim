@@ -8,10 +8,23 @@ import textwrap
 from functools import reduce
 import sys
 from collections import Iterable
+import re
 
+try:
+    import vtkInterface
+    import numpy as np
+
+    online_visualization_support = True
+except ImportError:
+    vtkInterface = None
+    np = None
+    online_visualization_support = False
+
+# noinspection PyUnresolvedReferences
 from cachesim import backend
 
 if sys.version_info[0] < 3:
+    # noinspection PyUnresolvedReferences
     range = xrange
 
 
@@ -174,8 +187,7 @@ class CacheSimulator(object):
             print("{name:>5} {HIT_count:>6} ({HIT_byte:>8}B) {MISS_count:>6} ({MISS_byte:>8}B) "
                   "{LOAD_count:>6} ({LOAD_byte:>8}B) {STORE_count:>6} "
                   "({STORE_byte:>8}B) {EVICT_count:>6} ({EVICT_byte:>8}B)".format(
-                    HIT_bytes=2342, **s),
-                  file=file)
+                    HIT_bytes=2342, **s), file=file)
 
     def levels(self, with_mem=True):
         """Return cache levels, optionally including main memory."""
@@ -501,7 +513,8 @@ class MainMemory(object):
 class CacheVisualizer(object):
     """Visualize cache state by generation of VTK files."""
 
-    def __init__(self, cs, dims, start_address=0, element_size=8, filename_base=None):
+    def __init__(self, cs, dims, cache=None, start_address=0, element_size=8, name="vis",
+                 filename_base=None, online=False, offline=True, camera_orientation="z"):
         """
         Create interface to interact with cache visualizer.
 
@@ -511,14 +524,18 @@ class CacheVisualizer(object):
                      10 rows and 15 columns of elements having wordSize.
         :param start_address: starting address of the array.
         :param element_size: size of each element in bytes.
+        :param name: give name to the visualization
         :param filename_base: base name of VTK file to be outputed for Paraview.
-
+        :param online: if online visualization has to be enabled
+        :param offline: if vtk files has to be ouputted for Paraview
+        :param camera_orientation: Camera orientation to set, options are +x,-x,+y,-y,+z,-z
         """
-        assert isinstance(cs, CacheSimulator), \
-            "cs needs to be a CacheSimulator object."
+        if not isinstance(cs, CacheSimulator):
+            raise ValueError("cs needs to be a CacheSimulator object.")
 
         ndim = len(dims)
-        assert ndim < 3, "Currently dump and view supported up to 3-D arrays only"
+        if ndim > 3:
+            raise ValueError("Currently dump and view supported up to 3-D arrays only")
 
         self.dims = dims
         self.npts = reduce(int.__mul__, self.dims, 1)
@@ -526,42 +543,73 @@ class CacheVisualizer(object):
         self.cs = cs
         self.startAddress = start_address
         self.element_size = element_size
+        self.name = name
         self.filename_base = filename_base
         self.count = 0
 
-    def dump_state(self):
+        self.online = online
+        self.offline = offline
+        if not re.match(r"[+\-]?[xyz]", camera_orientation):
+            raise ValueError("Camera orientation can only be one of these: "
+                             "+x, -x, +y, -y, +z or -z")
+        self.camera_orientation = camera_orientation
+        self.plobj = []
+        self.caches = []
+        if cache is None:
+            for c in self.cs.levels(with_mem=False):
+                self.caches.append(c)
+        else:
+            if isinstance(cache, list):
+                self.caches.extend(cache)
+            else:
+                self.caches.append(cache)
+
+    def create_data(self):
+        data = []
+        prev_cached = []
+        for c in self.caches:
+            address = [0] * self.npts
+            cached_addresses = {x - self.startAddress for x in c.backend.cached}
+            # Filtering elements outside of scope and scaling address to element indices
+            cached_elements = {x // self.element_size for x in cached_addresses
+                               if 0 <= x < self.npts * self.element_size}
+
+            cache_miss_elements = {}
+            if prev_cached:
+                cache_miss = c.backend.cached - prev_cached
+                cache_miss_filtered = {x - self.startAddress for x in cache_miss}
+                cache_miss_elements = {
+                    x // self.element_size for x in cache_miss_filtered
+                    if 0 <= x < self.npts * self.element_size}
+
+            for a in cached_elements:
+                address[a] = 2
+            for a in cache_miss_elements:
+                address[a] = 1
+            data.append(address)
+
+            prev_cached = c.backend.cached
+        return data
+
+    def dump_state(self, data):
         vtk_str = textwrap.dedent("""\
         # vtk DataFile Version 4.0
         CACHESIM VTK output
         ASCII
         DATASET STRUCTURED_POINTS
         """)
-
         # dimension string needs to be reversed and padded to 3 dimensions (using 1s)
         dim_str = " ".join([str(d+1) for d in reversed((self.dims + [1, 1, 1])[:3])])
-
         vtk_str += textwrap.dedent("""\
-        DIMENSIONS {}
-        ORIGIN 0 0 0
-        SPACING 1 1 1
-        CELL_DATA {}
-        FIELD DATA 1
-        """).format(dim_str, self.npts)
+                DIMENSIONS {}
+                ORIGIN 0 0 0
+                SPACING 1 1 1
+                CELL_DATA {}
+                FIELD DATA 1
+                """).format(dim_str, self.npts)
 
-        ctr = 1
-        data = []
-        for c in self.cs.levels(with_mem=False):
-            address = [0] * self.npts
-            cached_addresses = {x - self.startAddress for x in c.backend.cached}
-            # Filtering elements outside of scope and scaling address to element indices
-            cached_elements = {x // self.element_size for x in cached_addresses
-                               if 0 <= x < self.npts * self.element_size}
-            for a in cached_elements:
-                address[a] = 1
-            data.append(address)
-            ctr += 1
 
-        total_levels = (ctr - 1)
+        total_levels = len(self.caches)
         vtk_str += "\nData_arr {} {} double\n".format(total_levels, self.npts)
 
         for i in range(self.npts):
@@ -573,8 +621,75 @@ class CacheVisualizer(object):
         else:
             file = open("{}_{}.vtk".format(self.filename_base, self.count), 'w')
         file.write(vtk_str)
-        file.flush()
         if file != sys.stdout:
             file.close()
+        else:
+            file.flush()
 
         self.count += 1
+
+    def online_visualize(self, data):
+        if not online_visualization_support:
+            raise RuntimeError("Online visualization requires vtkInterface and numpy to be "
+                               "installed. E.g., using pip install --user pycachesim[ONLINE_VIS].")
+
+        if self.viz_count == 0:
+            dim = (self.dims + [1, 1, 1][:3])
+            x = np.arange(0, dim[2] + 1, 1)
+            y = np.arange(0, dim[1] + 1, 1)
+            z = np.arange(0, dim[0] + 1, 1)
+
+            x, y, z = np.meshgrid(x, y, z)
+
+            grid = vtkInterface.StructuredGrid(x, y, z)
+
+            for level, c in enumerate(self.caches):
+                self.plobj.append(vtkInterface.PlotClass())
+                curr_plobj = self.plobj[level]
+
+                if self.name:
+                    title = "Name: " + self.name + "\nCache: " + c.name
+                else:
+                    title = "Cache: " + c.name
+
+                curr_plobj.AddMesh(grid, scalars=data[level], stitle=title)
+                centre = (dim[2] / 2, dim[1] / 2, dim[0] / 2)
+                camera_pos = list(centre)
+
+                if self.camera_orientation[-1] == "x":
+                    idx = 2
+                    view = (1, 0, 0)
+                    camera_dist = max(dim[1], dim[2])
+                elif self.camera_orientation[-1] == "y":
+                    idx = 1
+                    view = (0, 0, 1)
+                    camera_dist = max(dim[0], dim[2])
+                else:  # z
+                    idx = 0
+                    view = (0, 0, 1)
+                    camera_dist = max(dim[1], dim[2])
+
+                mul = -1
+                if self.camera_orientation[0] == "-":
+                    mul = 1
+
+                camera_pos[idx] = camera_pos[idx] + mul * camera_dist * 2
+
+                camera_location = [tuple(camera_pos), centre, view]
+                curr_plobj.SetCameraPosition(camera_location)
+                curr_plobj.Plot(autoclose=False)
+        else:
+            for level, c in enumerate(self.caches):
+                curr_plobj = self.plobj[level]
+                curr_plobj.mesh.AddCellScalars(np.array(data[level]), '')
+                curr_plobj.Render()
+
+        self.viz_count += 1
+
+    def visualize(self):
+        data = self.create_data()
+
+        if self.online:
+            self.online_visualize(data)
+        if self.offline:
+            self.dump_state(data)
