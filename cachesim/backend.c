@@ -1119,7 +1119,13 @@ Cache* get_cacheSim_from_file(const char* cache_file)
 
     int size = 0;
     //get number of required cache objects
-    fgets(line, 1024, stream);
+    char* dummy = fgets(line, 1024, stream);
+    if (dummy == NULL)
+    {
+        fprintf(file, "could not read from cache definition file\n");
+        fflush(file);
+        exit(EXIT_FAILURE);
+    }
     size = atoi(line);
 
     if (size < 1)
@@ -1413,11 +1419,11 @@ Cache* get_cacheSim_from_file(const char* cache_file)
 void printStats(Cache* cache)
 {
     fprintf(stdout, "%s:\n",cache->name);
-    fprintf(stdout, "LOAD: %d   size: %dB\n",cache->LOAD.count, cache->LOAD.byte);
-    fprintf(stdout, "STORE: %d   size: %dB\n",cache->STORE.count, cache->STORE.byte);
-    fprintf(stdout, "HIT: %d   size: %dB\n",cache->HIT.count, cache->HIT.byte);
-    fprintf(stdout, "MISS: %d   size: %dB\n",cache->MISS.count, cache->MISS.byte);
-    fprintf(stdout, "EVICT: %d   size: %dB\n",cache->EVICT.count, cache->EVICT.byte);
+    fprintf(stdout, "LOAD: %llu   size: %lluB\n",cache->LOAD.count, cache->LOAD.byte);
+    fprintf(stdout, "STORE: %llu   size: %lluB\n",cache->STORE.count, cache->STORE.byte);
+    fprintf(stdout, "HIT: %llu   size: %lluB\n",cache->HIT.count, cache->HIT.byte);
+    fprintf(stdout, "MISS: %llu   size: %lluB\n",cache->MISS.count, cache->MISS.byte);
+    fprintf(stdout, "EVICT: %llu   size: %lluB\n",cache->EVICT.count, cache->EVICT.byte);
 
     if (cache->load_from != NULL)
         printStats(cache->load_from);
