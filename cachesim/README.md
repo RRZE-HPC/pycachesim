@@ -18,7 +18,7 @@ name=L2,sets=512,ways=8,cl_size=64,replacement_policy_id=1,write_back=1,write_al
 name=L3,sets=9216,ways=16,cl_size=64,replacement_policy_id=1,write_back=1,write_allocate=1
 ```
 
-- the first line must contain the number of ache levels
+- the first line must contain the number of cache levels
 - each line, that is not empty and that does not start with '#' will be considered a cache level
 - each key and value are separated by '='
 - key-value pairs are separated by ',' without whitespaces
