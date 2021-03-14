@@ -199,7 +199,7 @@ inline static int Cache__get_location(Cache* self, unsigned long cl_id, unsigned
     // TODO use sorted data structure for faster searches in case of large number of
     // ways or full-associativity?
 
-    for(int i=0; i<self->ways; i++) {
+    for(unsigned long i=0; i<self->ways; i++) {
         if(self->placement[set_id*self->ways+i].invalid == 0 &&
            self->placement[set_id*self->ways+i].cl_id == cl_id) {
             return i;
@@ -232,12 +232,12 @@ static int Cache__inject(Cache* self, cache_entry* entry) {
         replace_entry = self->placement[set_id*self->ways+self->ways-1];
 
         // Reorder queue
-        for(int i=self->ways-1; i>0; i--) {
+        for(unsigned long i=self->ways-1; i>0; i--) {
             self->placement[set_id*self->ways+i] = self->placement[set_id*self->ways+i-1];
 
             // Reorder bitfild in accordance to queue
             if(self->write_combining == 1) {
-                for(int j=0; j<self->subblock_bits; j++) {
+                for(unsigned long j=0; j<self->subblock_bits; j++) {
                     if(BITTEST(self->subblock_bitfield, set_id*self->ways*self->subblock_bits +
                                (i-1)*self->subblock_bits + j)) {
                         BITSET(self->subblock_bitfield, set_id*self->ways*self->subblock_bits +
@@ -255,12 +255,12 @@ static int Cache__inject(Cache* self, cache_entry* entry) {
         replace_entry = self->placement[set_id*self->ways];
 
         // Reorder queue
-        for(int i=0; i>self->ways-1; i++) {
+        for(unsigned long i=0; i>self->ways-1; i++) {
             self->placement[set_id*self->ways+i] = self->placement[set_id*self->ways+i+1];
 
             // Reorder bitfild in accordance to queue
             if(self->write_combining == 1) {
-                for(int j=0; j<self->subblock_bits; j++) {
+                for(unsigned long j=0; j<self->subblock_bits; j++) {
                     if(BITTEST(self->subblock_bitfield, set_id*self->ways*self->subblock_bits +
                                (i+1)*self->subblock_bits + j)) {
                         BITSET(self->subblock_bitfield, set_id*self->ways*self->subblock_bits +
@@ -283,7 +283,7 @@ static int Cache__inject(Cache* self, cache_entry* entry) {
 
     if(self->verbosity >= 3) {
         PySys_WriteStdout(
-            "%s REPLACED cl_id=%i invalid=%i dirty=%i\n",
+            "%s REPLACED cl_id=%lu invalid=%i dirty=%i\n",
             self->name, replace_entry.cl_id, replace_entry.invalid, replace_entry.dirty);
     }
 
@@ -295,7 +295,7 @@ static int Cache__inject(Cache* self, cache_entry* entry) {
             self->EVICT.byte += self->cl_size;
             if(self->verbosity >= 3) {
                 PySys_WriteStdout(
-                    "%s EVICT cl_id=%i\n",
+                    "%s EVICT cl_id=%lu invalid=%i dirty=%i\n",
                     self->name, replace_entry.cl_id, replace_entry.invalid, replace_entry.dirty);
             }
             if(self->store_to != NULL) {
@@ -304,7 +304,7 @@ static int Cache__inject(Cache* self, cache_entry* entry) {
                 if(self->write_combining == 1) {
                     // Check if non-temporal store may be used or write-allocate is necessary
                     non_temporal = 1;
-                    for(int i=0; i<self->subblock_bits; i++) {
+                    for(unsigned long i=0; i<self->subblock_bits; i++) {
                         if(BITTEST(self->subblock_bitfield,
                                 set_id*self->ways*self->subblock_bits +
                                 replace_idx*self->subblock_bits + i)) {
@@ -359,7 +359,7 @@ static int Cache__load(Cache* self, addr_range range) {
         unsigned long set_id = Cache__get_set_id(self, cl_id);
         if(self->verbosity >= 4) {
             PySys_WriteStdout(
-                "%s LOAD=%i addr=%i length=%i cl_id=%i set_id=%i\n",
+                "%s LOAD=%llu addr=%lu length=%lu cl_id=%lu set_id=%lu\n",
                 self->name, self->LOAD.count, range.addr, range.length, cl_id, set_id);
         }
 
@@ -371,7 +371,7 @@ static int Cache__load(Cache* self, addr_range range) {
             // We only add actual bytes that were requested to hit.byte
             self->HIT.byte += self->cl_size < range.length ? self->cl_size : range.length;
             if(self->verbosity >= 3) {
-                PySys_WriteStdout("%s HIT self->LOAD=%i addr=%i cl_id=%i set_id=%i\n",
+                PySys_WriteStdout("%s HIT self->LOAD=%llu addr=%lu cl_id=%lu set_id=%lu\n",
                                   self->name, self->LOAD.count, range.addr, cl_id, set_id);
             }
 
@@ -392,7 +392,7 @@ static int Cache__load(Cache* self, addr_range range) {
 
                         // Reorder bitfild in accordance to queue
                         if(self->write_combining == 1) {
-                            for(int i=0; i<self->subblock_bits; i++) {
+                            for(unsigned long i=0; i<self->subblock_bits; i++) {
                                 if(BITTEST(self->subblock_bitfield,
                                            set_id*self->ways*self->subblock_bits +
                                            (j-1)*self->subblock_bits + i)) {
@@ -420,16 +420,16 @@ static int Cache__load(Cache* self, addr_range range) {
         // We only add actual bytes that were requested to miss.byte
         self->MISS.byte += self->cl_size < range.length ? self->cl_size : range.length;
         if(self->verbosity >= 2) {
-            PySys_WriteStdout("%s CACHED [%i",
+            PySys_WriteStdout("%s CACHED [%lu",
                               self->name, self->placement[set_id*self->ways].cl_id);
-            for(int i=1; i<self->ways; i++) {
-                PySys_WriteStdout(", %i", self->placement[set_id*self->ways+i].cl_id);
+            for(unsigned long i=1; i<self->ways; i++) {
+                PySys_WriteStdout(", %lu", self->placement[set_id*self->ways+i].cl_id);
             }
             PySys_WriteStdout("]\n");
         }
         if(self->verbosity >= 1) {
             PySys_WriteStdout(
-                "%s MISS self->LOAD=%i addr=%i length=%i cl_id=%i set_id=%i\n",
+                "%s MISS self->LOAD=%llu addr=%lu length=%lu cl_id=%lu set_id=%lu\n",
                 self->name, self->LOAD.count, range.addr, range.length, cl_id, set_id);
         }
 
@@ -444,14 +444,14 @@ static int Cache__load(Cache* self, addr_range range) {
             if(victim_location_victim != -1) {
                 // hit in victim cache
                 if(self->verbosity >= 1) {
-                    PySys_WriteStdout("%s VICTIM HIT cl_id=%i\n", ((Cache*)self->victims_to)->name, cl_id);
+                    PySys_WriteStdout("%s VICTIM HIT cl_id=%lu\n", ((Cache*)self->victims_to)->name, cl_id);
                 }
                 // load data from victim cache
                 Cache__load((Cache*)self->victims_to, Cache__get_range_from_cl_id(self, cl_id));
                 // do NOT go onto load_from cache
                 victim_hit = 1;
             } else if(self->verbosity >= 1) {
-                PySys_WriteStdout("%s VICTIM MISS cl_id=%i\n", ((Cache*)self->victims_to)->name, cl_id);
+                PySys_WriteStdout("%s VICTIM MISS cl_id=%lu\n", ((Cache*)self->victims_to)->name, cl_id);
             }
             Py_DECREF(self->victims_to);
         }
@@ -488,9 +488,10 @@ static void Cache__store(Cache* self, addr_range range, int non_temporal) {
         unsigned long set_id = Cache__get_set_id(self, cl_id);
         int location = Cache__get_location(self, cl_id, set_id);
         if(self->verbosity >= 2) {
-            PySys_WriteStdout("%s STORE=%i NT=%i addr=%i length=%i cl_id=%i sets=%i location=%i\n",
-                              self->name, self->LOAD.count, non_temporal, range.addr, range.length,
-                              cl_id, self->sets, location);
+            PySys_WriteStdout(
+                "%s STORE=%llu NT=%i addr=%lu length=%lu cl_id=%lu sets=%lu location=%i\n",
+                self->name, self->LOAD.count, non_temporal, range.addr, range.length,
+                cl_id, self->sets, location);
         }
 
         if(self->write_allocate == 1 && non_temporal == 0) {
@@ -518,12 +519,12 @@ static void Cache__store(Cache* self, addr_range range, int non_temporal) {
         if(self->write_combining == 1) {
             // If write_combining is active, set the touched bits:
             // Extract local range
-            int cl_start = Cache__get_addr_from_cl_id(self, cl_id);
-            int start = range.addr > cl_start ? range.addr : cl_start;
-            int end = range.addr+range.length < cl_start+self->cl_size ?
-                      range.addr+range.length : cl_start+self->cl_size;
+            unsigned long cl_start = Cache__get_addr_from_cl_id(self, cl_id);
+            unsigned long start = range.addr > cl_start ? range.addr : cl_start;
+            unsigned long end = range.addr+range.length < cl_start+self->cl_size ?
+                                range.addr+range.length : cl_start+self->cl_size;
             // PySys_WriteStdout("cl_start=%i start=%i end=%i\n", cl_start, start, end);
-            for(int i=start-cl_start; i<end-cl_start; i++) {
+            for(unsigned long i=start-cl_start; i<end-cl_start; i++) {
                 BITSET(self->subblock_bitfield,
                        set_id*self->ways*self->subblock_bits + location*self->subblock_bits + i);
             }
@@ -555,9 +556,9 @@ static void Cache__store(Cache* self, addr_range range, int non_temporal) {
 
     // Print bitfield
     if(self->verbosity >= 3 && self->subblock_bitfield != NULL) {
-        for(int k=0; k<self->sets; k++) {
-           for(int j=0; j<self->ways; j++) {
-                for(int i=0; i<self->subblock_bits; i++) {
+        for(unsigned long k=0; k<self->sets; k++) {
+           for(unsigned long j=0; j<self->ways; j++) {
+                for(unsigned long i=0; i<self->subblock_bits; i++) {
                     if(BITTEST(self->subblock_bitfield,
                                k*self->subblock_bits*self->ways+self->subblock_bits*j+i)) {
                         PySys_WriteStdout("I");
@@ -774,7 +775,7 @@ static PyObject* Cache_contains(Cache* self, PyObject *args, PyObject *kwds) {
     unsigned long cl_id = Cache__get_cacheline_id(self, addr);
     unsigned long set_id = Cache__get_set_id(self, cl_id);
 
-    for(int i=0; i<self->ways; i++) {
+    for(unsigned long i=0; i<self->ways; i++) {
         if(self->placement[set_id*self->ways+i].invalid == 0 &&
            self->placement[set_id*self->ways+i].cl_id == cl_id) {
             Py_RETURN_TRUE;
@@ -785,7 +786,7 @@ static PyObject* Cache_contains(Cache* self, PyObject *args, PyObject *kwds) {
 
 static PyObject* Cache_force_write_back(Cache* self) {
     // PySys_WriteStdout("%s force_write_back\n", self->name);
-    for(int i=0; i<self->ways*self->sets; i++) {
+    for(unsigned long i=0; i<self->ways*self->sets; i++) {
         // PySys_WriteStdout("%i inv=%i dirty=%i\n", i, self->placement[i].invalid, self->placement[i].dirty);
         // TODO merge with Cache__inject (last section)?
         if(self->placement[i].invalid == 0 && self->placement[i].dirty == 1) {
@@ -793,7 +794,7 @@ static PyObject* Cache_force_write_back(Cache* self) {
             self->EVICT.byte += self->cl_size;
             if(self->verbosity >= 3) {
                 PySys_WriteStdout(
-                    "%s EVICT cl_id=%i\n",
+                    "%s EVICT cl_id=%lu invalid=%i dirty=%i\n",
                     self->name, self->placement[i].cl_id,
                     self->placement[i].invalid, self->placement[i].dirty);
             }
@@ -806,7 +807,7 @@ static PyObject* Cache_force_write_back(Cache* self) {
                 if(self->write_combining == 1) {
                     // Check if non-temporal store may be used or write-allocate is necessary
                     non_temporal = 1;
-                    for(int j=0; j<self->subblock_bits; j++) {
+                    for(unsigned long j=0; j<self->subblock_bits; j++) {
                         if(!BITTEST(self->subblock_bitfield, i*self->subblock_bits + j)) {
                             // incomplete cacheline, thus write-allocate is necessary
                             non_temporal = 0;
@@ -852,7 +853,7 @@ static PyObject* Cache_reset_stats(Cache* self) {
 
 static PyObject* Cache_count_invalid_entries(Cache* self) {
     int count = 0;
-    for(int i=0; i<self->ways*self->sets; i++) {
+    for(unsigned long i=0; i<self->ways*self->sets; i++) {
         if(self->placement[i].invalid == 1) {
             count++;
         }
@@ -877,7 +878,7 @@ static PyMethodDef Cache_methods[] = {
 
 static PyObject* Cache_cached_get(Cache* self) {
     PyObject* cached_set = PySet_New(NULL);
-    for(int i=0; i<self->sets*self->ways; i++) {
+    for(unsigned long i=0; i<self->sets*self->ways; i++) {
         //PySys_WriteStdout("i=%i cl_id=%i invalid=%i addr=%i\n", i, self->placement[i].cl_id, self->placement[i].invalid, Cache__get_addr_from_cl_id(self, self->placement[i].cl_id));
         // Skip invalidated entries
         if(self->placement[i].invalid) {
@@ -885,7 +886,7 @@ static PyObject* Cache_cached_get(Cache* self) {
         }
 
         // For each cached cacheline expand to all cached addresses:
-        for(int j=0; j<self->cl_size; j++) {
+        for(unsigned long j=0; j<self->cl_size; j++) {
             // PySys_WriteStdout("%i %i %i %i\n", self->sets, self->ways, i, self->placement[i].cl_id);
             PyObject* addr = PyLong_FromUnsignedLong(
                 Cache__get_addr_from_cl_id(self, self->placement[i].cl_id)+j);
@@ -1041,7 +1042,7 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
         self->subblock_bitfield = PyMem_New(
             char, BITNSLOTS(self->sets*self->ways*self->subblock_bits));
         // Clear all bits
-        for(int i=0; i<BITNSLOTS(self->sets*self->ways*self->subblock_bits); i++) {
+        for(unsigned long i=0; i<BITNSLOTS(self->sets*self->ways*self->subblock_bits); i++) {
             BITCLEAR(self->subblock_bitfield, i);
         }
     } else {
@@ -1052,7 +1053,7 @@ static int Cache_init(Cache *self, PyObject *args, PyObject *kwds) {
     Cache_reset_stats(self);
 
     if(self->verbosity >= 1) {
-        PySys_WriteStdout("CACHE sets=%i ways=%i cl_size=%i cl_bits=%i\n",
+        PySys_WriteStdout("CACHE sets=%lu ways=%lu cl_size=%lu cl_bits=%lu\n",
                           self->sets, self->ways, self->cl_size, self->cl_bits);
     }
 
