@@ -8,6 +8,8 @@ import os
 import io
 import re
 
+import numpy
+
 here = os.path.abspath(os.path.dirname(__file__))
 
 # Get the long description from the relevant file
@@ -93,7 +95,11 @@ setup(
 
     ext_modules=[
         Extension(
-            'cachesim.backend', sources=['cachesim/backend.c'], extra_compile_args=['-std=c99']),
+            'cachesim.backend',
+            sources=['cachesim/backend.c'],
+            extra_compile_args=['-std=c99'],  
+            #include_dirs=[numpy.get_include()]
+        )
     ],
 
     # List run-time dependencies here.  These will be installed by pip when your

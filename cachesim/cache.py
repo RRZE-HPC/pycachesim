@@ -157,7 +157,7 @@ class CacheSimulator(object):
         """
         if not isinstance(addrs, Iterable):
             raise ValueError("addr must be iteratable")
-
+        #print(type(addrs), addrs.dtype, addrs)
         self.first_level.loadstore(addrs, length=length)
 
     def stats(self):
@@ -196,6 +196,12 @@ class CacheSimulator(object):
     def count_invalid_entries(self):
         """Sum of all invalid entry counts from cache levels."""
         return sum([c.count_invalid_entries() for c in self.levels(with_mem=False)])
+
+    def mark_all_invalid(self):
+        """Mark all entries invalid and reset stats."""
+        for c in self.levels(with_mem=False):
+            c.mark_all_invalid()
+        self.reset_stats()
 
     # def draw_array(self, start, width, height, block=1):
     #     """Return image representation of cache states."""
