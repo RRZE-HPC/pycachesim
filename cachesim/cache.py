@@ -157,7 +157,6 @@ class CacheSimulator(object):
         """
         if not isinstance(addrs, Iterable):
             raise ValueError("addr must be iteratable")
-        #print(type(addrs), addrs.dtype, addrs)
         self.first_level.loadstore(addrs, length=length)
 
     def stats(self):
