@@ -8,7 +8,7 @@ import os
 import io
 import re
 
-import numpy
+#import numpy
 
 here = os.path.abspath(os.path.dirname(__file__))
 
