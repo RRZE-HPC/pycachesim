@@ -32,6 +32,7 @@ static PyMethodDef cachesim_methods[] = {
 static void Cache_dealloc(Cache* self) {
     Py_XDECREF(self->store_to);
     Py_XDECREF(self->load_from);
+    Py_XDECREF(self->victims_to);
     PyMem_Del(self->placement);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
@@ -585,6 +586,7 @@ static PyObject* Cache_iterload(Cache* self, PyObject *args, PyObject *kwds)
 
     // Get and check iterator
     PyObject *addrs_iter = PyObject_GetIter(addrs);
+    Py_DECREF(addrs);
     if(addrs_iter == NULL) {
         PyErr_SetString(PyExc_ValueError, "addrs is not iteratable");
         return NULL;
@@ -630,9 +632,11 @@ static PyObject* Cache_iterstore(Cache* self, PyObject *args, PyObject *kwds)
 
     static char *kwlist[] = {"addrs", "length", NULL};
     PyArg_ParseTupleAndKeywords(args, kwds, "O|I", kwlist, &addrs, &range.length);
+    Py_INCREF(addrs);
 
     // Get and check iterator
     PyObject *addrs_iter = PyObject_GetIter(addrs);
+    Py_DECREF(addrs);
     if(addrs_iter == NULL) {
         PyErr_SetString(PyExc_ValueError, "addrs is not iteratable");
         return NULL;
@@ -663,9 +667,11 @@ static PyObject* Cache_loadstore(Cache* self, PyObject *args, PyObject *kwds)
 
     static char *kwlist[] = {"addrs", "length", NULL};
     PyArg_ParseTupleAndKeywords(args, kwds, "O|I", kwlist, &addrs, &range.length);
+    Py_INCREF(addrs);
 
     // Get and check iterator
     PyObject *addrs_iter = PyObject_GetIter(addrs);
+    Py_DECREF(addrs);
     if(addrs_iter == NULL) {
         PyErr_SetString(PyExc_ValueError, "addrs is not iteratable");
         return NULL;
@@ -714,6 +720,7 @@ static PyObject* Cache_loadstore(Cache* self, PyObject *args, PyObject *kwds)
                 // Swap cl_id is irrelevant here, since this is only called on first level cache
                 Py_DECREF(addr);
             }
+            Py_DECREF(load_iter);
         }
 
         // If store addresses are given
@@ -743,6 +750,7 @@ static PyObject* Cache_loadstore(Cache* self, PyObject *args, PyObject *kwds)
                 Cache__store(self, range, 0);
                 Py_DECREF(addr);
             }
+            Py_DECREF(store_iter);
         }
 
         Py_DECREF(load_addrs);
