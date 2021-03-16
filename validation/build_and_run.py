@@ -197,8 +197,13 @@ def get_machine_model(hostname=socket.gethostname()):
         hostmap = yaml.load(f, Loader=yaml.Loader)
 
     if hostname not in hostmap:
-        raise KeyError("hostname {!r} for found in INSPECT's hosts config.".format(
-            hostname))
+        for h, d in hostmap.items():
+            if hostname in d['nodelist']:
+                hostname = h
+                break
+        else:
+            raise KeyError("hostname {!r} for found in INSPECT's hosts config.".format(
+                hostname))
 
     return MachineModel(Path(hpc_inspect.__file__).parent.parent /
                         "machine_files" /
