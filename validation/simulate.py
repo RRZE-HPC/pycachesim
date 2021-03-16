@@ -50,6 +50,20 @@ def get_kc_kernel(kernel_name):
                 'b': []}
         dsts = {'a': [],
                 'b': [['z', 'y', 'x']]}
+    elif kernel_name == '3d-r3-11pt':
+        loops = [{'index': 'z', 'start': '1', 'stop': 'D0-1', 'step': '1'},
+                 {'index': 'y', 'start': '1', 'stop': 'D1-1', 'step': '1'},
+                 {'index': 'x', 'start': '1', 'stop': 'D2-1', 'step': '1'}]
+        arrays = {'a': {'type': ('double',), 'dimension': ['D0', 'D1', 'D2']},
+                  'b': {'type': ('double',), 'dimension': ['D0', 'D1', 'D2']}}
+        srcs = {'a': [['z-3', 'y', 'x'], 'z-1', 'y', 'x'],
+                      ['z', 'y-3', 'x'], ['z', 'y-1', 'x'],
+                      ['z', 'y', 'x-1'], ['z', 'y', 'x'], ['z', 'y', 'x+1'],
+                      ['z', 'y+1', 'x'], ['z', 'y+3', 'x'],
+                      ['z+1', 'y', 'x'], ['z+3', 'y', 'x']],
+                'b': []}
+        dsts = {'a': [],
+                'b': [['z', 'y', 'x']]}
     elif kernel_name == 'matvec':
         loops = [{'index': 'row', 'start': '0', 'stop': 'D0', 'step': '1'},
                  {'index': 'col', 'start': '0', 'stop': 'D1', 'step': '1'}]
