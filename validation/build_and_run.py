@@ -361,7 +361,7 @@ def main(basepath, kernels=None):
             row['source'] = kernel_src
             data.append(row)
         df = pandas.DataFrame(data)
-        df.to_pickle(filename)
+        df.to_pickle(filename, protocol=4)
         print("saved ({})".format(filename))
     clean()
 
