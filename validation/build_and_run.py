@@ -22,7 +22,24 @@ from kerncraft.machinemodel import MachineModel
 from kerncraft.prefixedunit import PrefixedUnit
 
 
-def get_kernels(kernels=None, hostname=socket.gethostname()):
+@lru_cache()
+def get_hostname():
+    hostname = socket.gethostname()
+    with open(Path(hpc_inspect.__file__).parent.parent / 'config/hosts.yml') as f:
+        hostmap = yaml.load(f, Loader=yaml.Loader)
+
+    if hostname not in hostmap:
+        for h, d in hostmap.items():
+            if hostname in d['nodelist']:
+                hostname = h
+                break
+        else:
+            raise KeyError("hostname {!r} for found in INSPECT's hosts config.".format(
+                hostname))
+    return hostname
+
+
+def get_kernels(kernels=None, hostname=get_hostname()):
     if kernels is None:
         kernels = []
         for f in glob("kernels/*.c"):
@@ -191,7 +208,7 @@ def clean(objs=True, all=False):
 
 
 @lru_cache()
-def get_machine_model(hostname=socket.gethostname()):
+def get_machine_model(hostname=get_hostname()):
     """Returns MachineModel for current host"""
     with open(Path(hpc_inspect.__file__).parent.parent / 'config/hosts.yml') as f:
         hostmap = yaml.load(f, Loader=yaml.Loader)
@@ -313,7 +330,7 @@ def main(basepath, kernels=None):
     ms.generate()
     ms.update()
     ms_dict = ms.get()
-    hostname = socket.gethostname()
+    hostname = get_hostname()
 
     for kernel, args in get_kernels(kernels):
         print(kernel, end=": ", flush=True)

@@ -15,7 +15,7 @@ from build_and_run import get_machine_model, get_kernels
 
 
 def get_hostnames():
-    return ['ivyep1', 'skylakesp2', 'naples1', 'rome1', 'warmup']
+    return ['ivyep1', 'skylakesp2', 'naples1', 'rome1', 'warmup', 'qpace4']
 
 
 def get_kc_kernel(kernel_name):
