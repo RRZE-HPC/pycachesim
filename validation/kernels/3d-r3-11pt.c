@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) {
                 cur_repeats, cur_elementsz, cur_elementsy, cur_elementsx);
         likwid_markerRegisterRegion(cur_region_name);
         printf("%s:iterations: %i\n", cur_region_name,
-               (cur_elementsz-2)*(cur_elementsy-2)*(cur_elementsx-2));
+               (cur_elementsz-6)*(cur_elementsy-6)*(cur_elementsx-2));
         printf("%s:repetitions: %i\n", cur_region_name, cur_repeats);
 
         for(int warmup = 1; warmup >= 0; --warmup) {
@@ -60,8 +60,8 @@ int main(int argc, char *argv[]) {
             }
 
             for(; repeat > 0; --repeat) {
-                for(int z=1; z<cur_elementsz-1; z++) {
-                    for(int y=1; y<cur_elementsy-1; y++) {
+                for(int z=3; z<cur_elementsz-3; z++) {
+                    for(int y=3; y<cur_elementsy-3; y++) {
                         for(int x=1; x<cur_elementsx-1; x++) {
                             a[z*cur_elementsy*cur_elementsx+y*cur_elementsx+x] =
                                 b[(z+3)*cur_elementsy*cur_elementsx+y*cur_elementsx+x] +

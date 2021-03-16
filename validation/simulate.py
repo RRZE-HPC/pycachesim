@@ -51,12 +51,12 @@ def get_kc_kernel(kernel_name):
         dsts = {'a': [],
                 'b': [['z', 'y', 'x']]}
     elif kernel_name == '3d-r3-11pt':
-        loops = [{'index': 'z', 'start': '1', 'stop': 'D0-1', 'step': '1'},
-                 {'index': 'y', 'start': '1', 'stop': 'D1-1', 'step': '1'},
+        loops = [{'index': 'z', 'start': '3', 'stop': 'D0-3', 'step': '1'},
+                 {'index': 'y', 'start': '3', 'stop': 'D1-3', 'step': '1'},
                  {'index': 'x', 'start': '1', 'stop': 'D2-1', 'step': '1'}]
         arrays = {'a': {'type': ('double',), 'dimension': ['D0', 'D1', 'D2']},
                   'b': {'type': ('double',), 'dimension': ['D0', 'D1', 'D2']}}
-        srcs = {'a': [['z-3', 'y', 'x'], 'z-1', 'y', 'x'],
+        srcs = {'a': [['z-3', 'y', 'x'], ['z-1', 'y', 'x'],
                       ['z', 'y-3', 'x'], ['z', 'y-1', 'x'],
                       ['z', 'y', 'x-1'], ['z', 'y', 'x'], ['z', 'y', 'x+1'],
                       ['z', 'y+1', 'x'], ['z', 'y+3', 'x'],
