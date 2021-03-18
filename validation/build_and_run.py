@@ -33,9 +33,6 @@ def get_hostname():
             if hostname in d['nodelist']:
                 hostname = h
                 break
-        else:
-            raise KeyError("hostname {!r} for found in INSPECT's hosts config.".format(
-                hostname))
     return hostname
 
 
@@ -162,7 +159,8 @@ def perfctr(cmd, cores, group='MEM', code_markers=True, verbose=0):
                 counter_value = 0
             else:
                 counter_value = int(line[2])
-            if re.fullmatch(r'[A-Z0-9_]+', line[0]) and re.fullmatch(r'[A-Z0-9]+', line[1]):
+            if re.fullmatch(r'[A-Z0-9_]+', line[0]) and \
+                    re.fullmatch(r'[A-Z0-9]+(:[A-Z]+=[0-9x]+)*', line[1]):
                 cur_region_data.setdefault(line[0], {})
                 cur_region_data[line[0]][line[1]] = counter_value
                 continue
@@ -284,7 +282,10 @@ def run_kernel(kernel, args):
         # Match measured counters to symbols
         event_counter_results[kernel_run] = {}
         for sym, ctr in event_counters.items():
-            event, regs, parameter = ctr[0], benchmark.register_options(ctr[1]), ctr[2]
+            event, regs, parameters = ctr[0], benchmark.register_options(ctr[1]), ctr[2]
+            if parameters:
+                parameter_str = ':'.join(parameters)
+                regs = [r+':'+parameter_str for r in regs]
             for r in regs:
                 if r in measured_ctrs[kernel_run][event]:
                     event_counter_results[kernel_run][sym] = measured_ctrs[kernel_run][event][r]
