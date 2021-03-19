@@ -160,7 +160,7 @@ def perfctr(cmd, cores, group='MEM', code_markers=True, verbose=0):
             else:
                 counter_value = int(line[2])
             if re.fullmatch(r'[A-Z0-9_]+', line[0]) and \
-                    re.fullmatch(r'[A-Z0-9]+(:[A-Z]+=[0-9x]+)*', line[1]):
+                    re.fullmatch(r'[A-Z0-9]+(:[A-Z]+=[0-9A-Fa-fx]+)*', line[1]):
                 cur_region_data.setdefault(line[0], {})
                 cur_region_data[line[0]][line[1]] = counter_value
                 continue
@@ -229,8 +229,7 @@ def run_kernel(kernel, args):
     # get per cachelevel performance counter information:
     event_counters = {}
     cache_metrics = defaultdict(dict)
-    for i in range(len(machine['memory hierarchy']) - 1):
-        cache_info = machine['memory hierarchy'][i]
+    for i, cache_info in enumerate(machine['memory hierarchy']):
         name = cache_info['level']
         for k, v in cache_info['performance counter metrics'].items():
             if v is None:
@@ -303,7 +302,10 @@ def run_kernel(kernel, args):
                                     'CL/{}It.'.format(base_iterations))
                     for k, v in d.items()}
             for cache, d in cache_metric_results[kernel_run].items()}
-        cache_transfers_per_cl[kernel_run]['L1']['accesses'].unit = \
+            
+        cache_transfers_per_cl[kernel_run]['L1']['loads'].unit = \
+            'LOAD/{}It.'.format(base_iterations)
+        cache_transfers_per_cl[kernel_run]['L1']['stores'].unit = \
             'LOAD/{}It.'.format(base_iterations)
 
     return cache_transfers_per_cl, global_infos, raw_results
@@ -354,12 +356,12 @@ def main(basepath, kernels=None):
             row.update(global_infos)
             for cache, metrics in sorted(cache_metric_results_per_cl[kernel_info].items()):
                 for k, v in sorted(metrics.items()):
-                    row[cache+'_'+k] = v
-                    row[cache+'_'+k+'_float'] = float(v)
+                    row[cache+'_'+k] = float(v)
+                    row[cache+'_'+k+'.unit'] = v.unit
             row['raw'] = rr
             row['machinestate'] = ms_dict
             row['binary'] = kernel_bin
-            row['source'] = kernel_src
+            row['benchcode'] = kernel_src
             data.append(row)
         df = pandas.DataFrame(data)
         df.to_pickle(filename, protocol=4)

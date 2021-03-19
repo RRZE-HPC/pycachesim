@@ -4,7 +4,6 @@ import os
 from glob import glob
 from pprint import pprint
 import multiprocessing as mp
-import gc
 
 import pandas as pd
 
@@ -119,11 +118,16 @@ def get_kc_kernel(kernel_name):
 
 
 def simulate(hostname, kernel, args):
+    filename = f'results/predicted/{hostname}_{kernel}.pkl.gz'
+    print(hostname, kernel, end=" ")
+    if os.path.exists(filename):
+        print(f"exists {filename}")
+        return
     data = []
     machine = get_machine_model(hostname)
     kc_kernel = get_kc_kernel(kernel)
     no_lcp = False
-    for arg in args:
+    for c, arg in enumerate(args):
         # reset kernel state
         kc_kernel.clear_state()
 
@@ -143,60 +147,69 @@ def simulate(hostname, kernel, args):
             'kernel': kernel,
             'dimensions': arg[1:]}
         
+        # Typically ['L1', 'L2', 'L3', 'MEM']
+        levels = [mh['level'] for mh in machine['memory hierarchy']]
+        stat_types = ['loads', 'misses', 'stores', 'evicts']
+        
         cs_row = {'source': 'pycachesim'}
         cs_row.update(row)
-        for cache_info in csp_infos['memory hierarchy'][:-1]:  # ignoring mem
-            level = cache_info['level']
-            if cache_info['index'] == 0:
-                cs_row[f"{level}_accesses_float"] = cache_info['total loads']
-            else:
-                cs_row[f"{level}_accesses_float"] = cache_info['total lines load']
-            cs_row[f"{level}_misses_float"] = cache_info['total lines misses']
-            cs_row[f"{level}_evicts_float"] = cache_info['total lines evicts']
+        
+        for st in stat_types:
+            for level, stat in zip(levels, getattr(csp, f'get_{st}')()):
+                if level == "MEM" and st in ['misses', 'evicts']: continue  # makes no sense
+                cs_row[level+'_'+st] = float(stat)
+        
         cs_row['raw'] = csp_infos
         data.append(cs_row)
         
         if not no_lcp:
             lc_row = {'source': 'layer-conditions'}
             lc_row.update(row)
-            for lvl, cache_info in enumerate(lcp_infos['cache']):
-                level = f"L{lvl+1}"
-                if lvl == 0:
-                    lc_row[f"{level}_accesses_float"] = 0
-                else:
-                    lc_row[f"{level}_accesses_float"] = lcp_infos['cache'][i-1]['misses']
-                lc_row[f"{level}_evicts_float"] = cache_info['evicts']
-                lc_row[f"{level}_misses_float"] = cache_info['misses']
+            for st in stat_types:
+                for level, stat in zip(levels, getattr(lcp, f'get_{st}')()):
+                    if level == "MEM" and st in ['misses', 'evicts']: continue  # makes no sense
+                    lc_row[level+'_'+st] = float(stat)
             lc_row['raw'] = lcp_infos
             data.append(lc_row)
-        print(".", end='', flush=True)
+        if c % (len(args) // 10) == 0:
+            print(".", end='', flush=True)
+    df = pd.DataFrame(data)
+    os.makedirs('results/predicted', exist_ok=True)
+    df.to_pickle(f'results/predicted/{hostname}_{kernel}.pkl.gz')
+    print(f"saved {filename}")
     return data
 
 
-def simulate_host(hostname):
+def simulate_host(hostname, kernels=None):
+    kernels_args = get_kernels(hostname=hostname)
+    if kernels is not None:
+        kernels_args = [(kn, ka) for kn, ka in kernels_args if kn in kernels]
+
+
     for kernel, args in get_kernels(hostname=hostname):
-        filename = f'results/predicted/{hostname}_{kernel}.pkl.gz'
-        print(hostname, kernel, end=" ")
-        if os.path.exists(filename):
-            print(f"exists {filename}")
+        if kernels is not None and kernel not in kernels:
             continue
-        data = simulate(hostname, kernel, args)
-        df = pd.DataFrame(data)
-        os.makedirs('results/predicted', exist_ok=True)
-        df.to_pickle(f'results/predicted/{hostname}_{kernel}.pkl.gz')
-        print(f"saved {filename}")
+
 
 
 def main():
-    pool = mp.Pool(processes=8)
-    pool.map(simulate_host, get_hostnames())
+    hosts = get_hostnames()
+    if len(sys.argv) > 1:
+        if any([h in sys.argv for h in get_hostnames()]):
+            hosts = [h for h in get_hostnames() if h in sys.argv]
 
-    #for hostname in get_hostnames():
-    #    simulate_host(hostname)
+    for hostname in hosts:
+        kernels = get_kernels(hostname=hostname)
+        if any([kn in sys.argv for kn, ka in get_kernels(hostname=hostname)]):
+            kernels = [(kn, ka) for kn, ka in get_kernels(hostname=hostname) if kn in sys.argv]
+        if '--serial' in sys.argv:
+            for kernel, args in kernels:
+             simulate(hostname, kernel, args)
+        else:
+            with mp.Pool(8) as p:
+                p.starmap(simulate, [(hostname, kernel, args) for kernel, args in kernels])
+        
 
-    # for each host, kernel, size configuration found in results
-    # run simulation using kerncrafts's approach
-    # save to simulated dataframe
     pass
 
 
