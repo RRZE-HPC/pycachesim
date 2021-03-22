@@ -198,19 +198,26 @@ def main():
         if any([h in sys.argv for h in get_hostnames()]):
             hosts = [h for h in get_hostnames() if h in sys.argv]
 
-    for hostname in hosts:
-        kernels = get_kernels(hostname=hostname)
-        if any([kn in sys.argv for kn, ka in get_kernels(hostname=hostname)]):
-            kernels = [(kn, ka) for kn, ka in get_kernels(hostname=hostname) if kn in sys.argv]
-        if '--serial' in sys.argv:
+    if '--serial' in sys.argv:
+        for hostname in hosts:
+            kernels = get_kernels(hostname=hostname)
+            if any([kn in sys.argv for kn, ka in get_kernels(hostname=hostname)]):
+                kernels = [(kn, ka) for kn, ka in get_kernels(hostname=hostname) if kn in sys.argv]
             for kernel, args in kernels:
-             simulate(hostname, kernel, args)
-        else:
-            with mp.Pool(8) as p:
-                p.starmap(simulate, [(hostname, kernel, args) for kernel, args in kernels])
-        
-
-    pass
+                 simulate(hostname, kernel, args)
+    else:
+        with mp.Pool() as p:
+            for hostname in hosts:
+                kernels = get_kernels(hostname=hostname)
+                if any([kn in sys.argv for kn, ka in get_kernels(hostname=hostname)]):
+                    kernels = [(kn, ka) for kn, ka in get_kernels(hostname=hostname) if kn in sys.argv]
+                if '--serial' in sys.argv:
+                    for kernel, args in kernels:
+                     simulate(hostname, kernel, args)
+                else:
+                    p.starmap_async(simulate, [(hostname, kernel, args) for kernel, args in kernels])
+            p.close()
+            p.join()
 
 
 if __name__ == "__main__":

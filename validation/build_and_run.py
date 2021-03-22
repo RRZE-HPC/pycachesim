@@ -10,6 +10,7 @@ from collections import defaultdict
 import re
 from functools import reduce, lru_cache
 from itertools import combinations_with_replacement, product
+import platform
 
 from ruamel import yaml
 import pandas
@@ -160,7 +161,7 @@ def perfctr(cmd, cores, group='MEM', code_markers=True, verbose=0):
             else:
                 counter_value = int(line[2])
             if re.fullmatch(r'[A-Z0-9_]+', line[0]) and \
-                    re.fullmatch(r'[A-Z0-9]+(:[A-Z]+=[0-9A-Fa-fx]+)*', line[1]):
+                    re.fullmatch(r'[A-Z0-9]+(:[A-Z0-9]+=[0-9A-Fa-fx]+)*', line[1]):
                 cur_region_data.setdefault(line[0], {})
                 cur_region_data[line[0]][line[1]] = counter_value
                 continue
@@ -175,8 +176,9 @@ def perfctr(cmd, cores, group='MEM', code_markers=True, verbose=0):
 
 
 def build_kernel(kernel):
+    arch = platform.machine()
     Path('build').mkdir(exist_ok=True)
-    if os.path.exists("build/"+kernel):
+    if os.path.exists(f"build/{kernel}.{platform.machine()}"):
         return
     
     # build object
@@ -184,16 +186,16 @@ def build_kernel(kernel):
         os.environ["LIKWID_DEFINES"],
         os.environ["LIKWID_INC"],
         "-O1"]
-    check_call(["gcc"] + cflags + ["-c", "kernels/"+kernel+".c", "-o", "build/"+kernel+".o"])
-    if not Path('build/dummy.o').exists():
-        check_call(["gcc"] + cflags + ["-c", "kernels/dummy.c", "-o", "build/dummy.o"])
+    check_call(["gcc"] + cflags + ["-c", "kernels/"+kernel+".c", "-o", f"build/{kernel}.{arch}.o"])
+    if not Path(f'build/dummy.{arch}.o').exists():
+        check_call(["gcc"] + cflags + ["-c", "kernels/dummy.c", "-o", f"build/dummy.{arch}.o"])
 
     # link exec
     check_call(["gcc", os.environ["LIKWID_LIB"],
-        "build/dummy.o",
-        "build/"+kernel+".o",
+        f"build/dummy.{arch}.o",
+        f"build/{kernel}.{arch}.o",
         "-llikwid",
-        "-o", "build/"+kernel])
+        "-o", f"build/{kernel}.{arch}"])
 
 
 def clean(objs=True, all=False):
@@ -243,7 +245,7 @@ def run_kernel(kernel, args):
                 continue
             event_counters.update(event_dict)
     
-    bench_filename = "build/"+kernel
+    bench_filename = f"build/{kernel}.{platform.machine()}"
     raw_results = []
     global_infos = {}
     # Compile minimal runs to gather all required events
@@ -343,7 +345,7 @@ def main(basepath, kernels=None):
             print("skipping ({} already exists)".format(filename))
             continue
         build_kernel(kernel)
-        with open('build/'+kernel, 'rb') as f:
+        with open(f'build/{kernel}.{platform.machine()}', 'rb') as f:
             kernel_bin = f.read()
         with open('kernels/'+kernel+'.c', 'r') as f:
             kernel_src = f.read()
