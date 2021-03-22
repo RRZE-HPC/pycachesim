@@ -4,8 +4,7 @@ pycachesim
 A single-core cache hierarchy simulator written in python.
 
 .. image:: https://github.com/RRZE-HPC/pycachesim/actions/workflows/test-n-publish.yml/badge.svg
-    :target:https://travis-ci.com/github/RRZE-HPC/pycachesim?branch=maste://gi
-   thub.com/RRZE-HPC/pycachesim/actions/workflows/test-n-publish.yml 
+   :target: https://github.com/RRZE-HPC/pycachesim/actions/workflows/test-n-publish.yml
 
 The goal is to accurately simulate the caching (allocation/hit/miss/replace/evict) behavior of all cache levels found in modern processors. It is developed as a backend to `kerncraft <https://github.com/RRZE-HPC/kerncraft>`_, but is also planned to introduce a command line interface to replay LOAD/STORE instructions.
 
