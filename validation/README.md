@@ -2,7 +2,7 @@
 
 This folder contains scripts, benchmark codes and gathered measurement results to support validation of pycachesim and the Layer Condition model.
 
-The folder `kernels/` contains c-code based benchmarks to generat and measure different data access scenarios. All kernels are enabled for LIKWID performance counter measurements and have been optimized for fast-and-thorough measurements. Meaning that they can be used to easily gather thousands of measurements within minutes. Total runtime of the whole suite, including repeated measurements to gather all necessary events taks about an hour. Gathered results are found in `results/`. The validation results gathered on the testcluster at NHR@FAU is found with the v2.4 pycachsim release files (`validataion-results.pkl.gz`) on github. Later versions may provide updated results.
+The folder `kernels/` contains c-code based benchmarks to generat and measure different data access scenarios. All kernels are enabled for LIKWID performance counter measurements and have been optimized for fast-and-thorough measurements. Meaning that they can be used to easily gather thousands of measurements within minutes. Total runtime of the whole suite, including repeated measurements to gather all necessary events taks about an hour. Gathered results are found in `results/`. The validation results gathered on the testcluster at NHR@FAU is found with the v0.2.5 pycachsim release files (`validataion-results.pkl.gz`) on github. Later versions may provide updated results.
 
 An analysis of the date and simulations is found in `Analysis.ipynb`, it is best viewed using nbviewer via: https://nbviewer.jupyter.org/github/RRZE-HPC/pycachesim/blob/master/validation/Analysis.ipynb
 
