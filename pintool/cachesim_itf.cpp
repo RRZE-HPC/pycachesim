@@ -127,22 +127,22 @@ VOID ImageLoad(IMG img, VOID *v)
 LOCALFUN VOID MemRead_check(UINT64 addr, UINT32 size)
 {
     if (_pinMarker_active)
-        Cache__load(firstLevel, {addr, size});
+      Cache__load(firstLevel, {static_cast<long int>(addr), size});
 }
 LOCALFUN VOID MemWrite_check(UINT64 addr, UINT32 size)
 {
     if (_pinMarker_active)
-        Cache__store(firstLevel, {addr, size},0);
+      Cache__store(firstLevel, {static_cast<long int>(addr), size},0);
 }
 
 //callbacks for loads and stores, without checks
 LOCALFUN VOID MemRead(UINT64 addr, UINT32 size)
 {
-    Cache__load(firstLevel, {addr, size});
+  Cache__load(firstLevel, {static_cast<long int>(addr), size});
 }
 LOCALFUN VOID MemWrite(UINT64 addr, UINT32 size)
 {
-    Cache__store(firstLevel, {addr, size},0);
+  Cache__store(firstLevel, {static_cast<long int>(addr), size},0);
 }
 
 // instrumentation routine inserting the callbacks to memory instructions
