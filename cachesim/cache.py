@@ -7,7 +7,7 @@ from __future__ import unicode_literals
 import textwrap
 from functools import reduce
 import sys
-from collections import Iterable
+from collections.abc import Iterable
 
 from cachesim import backend
 
