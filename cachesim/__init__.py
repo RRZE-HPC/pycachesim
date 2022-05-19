@@ -3,7 +3,7 @@ from __future__ import absolute_import
 
 from .cache import *
 
-__version__ = '0.3.0'
+__version__ = '0.3.1'
 
 # To trigger travis deployment to pypi, do the following:
 # 1. Increment __version___
