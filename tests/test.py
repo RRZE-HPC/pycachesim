@@ -826,3 +826,27 @@ class TestHighlevel(unittest.TestCase):
         self.assertEqual(cs.first_level.backend.load_from, caches['L2'].backend)
         self.assertEqual(caches['L2'].backend.victims_to, mem.last_level_store.backend)
         self.assertEqual(caches['L2'].backend.load_from, None)
+
+    def test_64bit(self):
+        mem = MainMemory()
+        l1 = Cache("L1", 1, 1, 32, "LRU")
+        mem.load_to(l1)
+        mem.store_from(l1)
+        cs = CacheSimulator(l1, mem)
+        #l1.backend.verbosity = 4
+
+        cs.load(0xf, 4)
+        self.assertEqual(l1.stats()['MISS_count'], 1)
+        self.assertEqual(l1.stats()['HIT_count'], 0)
+
+        cs.load(0xf, 4)
+        self.assertEqual(l1.stats()['MISS_count'], 1)
+        self.assertEqual(l1.stats()['HIT_count'], 1)
+
+        cs.load(0xf | (1<<32), 4)
+        self.assertEqual(l1.stats()['MISS_count'], 2)
+        self.assertEqual(l1.stats()['HIT_count'], 1)
+
+        cs.load(0xf | (1<<32), 4)
+        self.assertEqual(l1.stats()['MISS_count'], 2)
+        self.assertEqual(l1.stats()['HIT_count'], 2)

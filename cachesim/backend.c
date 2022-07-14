@@ -106,7 +106,7 @@ static PyMemberDef Cache_members[] = {
 };
 #endif
 
-inline static long Cache__get_cacheline_id(Cache* self, long addr) {
+inline static long Cache__get_cacheline_id(Cache* self, long long addr) {
     return addr >> self->cl_bits;
 }
 
@@ -114,14 +114,14 @@ inline static long Cache__get_set_id(Cache* self, long cl_id) {
     return cl_id % self->sets;
 }
 
-inline static addr_range __range_from_addrs(long addr, long last_addr) {
+inline static addr_range __range_from_addrs(long long addr, long long last_addr) {
     addr_range range;
     range.addr = addr;
     range.length = last_addr-addr-1;
     return range;
 }
 
-inline static long Cache__get_addr_from_cl_id(Cache* self, long cl_id) {
+inline static long long Cache__get_addr_from_cl_id(Cache* self, long cl_id) {
     return cl_id << self->cl_bits;
 }
 
@@ -321,7 +321,7 @@ int Cache__load(Cache* self, addr_range range) {
 #ifndef NO_PYTHON
         if(self->verbosity >= 4) {
             PySys_WriteStdout(
-                "%s LOAD=%lli addr=%li length=%li cl_id=%li set_id=%li\n",
+                "%s LOAD=%lli addr=%lli length=%lli cl_id=%li set_id=%li\n",
                 self->name, self->LOAD.count, range.addr, range.length, cl_id, set_id);
         }
 #endif
@@ -335,7 +335,7 @@ int Cache__load(Cache* self, addr_range range) {
             self->HIT.byte += self->cl_size < range.length ? self->cl_size : range.length;
 #ifndef NO_PYTHON
             if(self->verbosity >= 3) {
-                PySys_WriteStdout("%s HIT self->LOAD=%lli addr=%li cl_id=%li set_id=%li\n",
+                PySys_WriteStdout("%s HIT self->LOAD=%lli addr=%lli cl_id=%li set_id=%li\n",
                                   self->name, self->LOAD.count, range.addr, cl_id, set_id);
             }
 #endif
@@ -395,7 +395,7 @@ int Cache__load(Cache* self, addr_range range) {
         }
         if(self->verbosity >= 1) {
             PySys_WriteStdout(
-                "%s MISS self->LOAD=%lli addr=%li length=%li cl_id=%li set_id=%li\n",
+                "%s MISS self->LOAD=%lli addr=%lli length=%lli cl_id=%li set_id=%li\n",
                 self->name, self->LOAD.count, range.addr, range.length, cl_id, set_id);
         }
 #endif
@@ -468,7 +468,7 @@ void Cache__store(Cache* self, addr_range range, int non_temporal) {
 #ifndef NO_PYTHON
         if(self->verbosity >= 2) {
             PySys_WriteStdout(
-                "%s STORE=%lli NT=%i addr=%li length=%li cl_id=%li sets=%li location=%i\n",
+                "%s STORE=%lli NT=%i addr=%lli length=%lli cl_id=%li sets=%li location=%i\n",
                 self->name, self->LOAD.count, non_temporal, range.addr, range.length,
                 cl_id, self->sets, location);
         }
@@ -499,12 +499,12 @@ void Cache__store(Cache* self, addr_range range, int non_temporal) {
         if(self->write_combining == 1) {
             // If write_combining is active, set the touched bits:
             // Extract local range
-            long cl_start = Cache__get_addr_from_cl_id(self, cl_id);
-            long start = range.addr > cl_start ? range.addr : cl_start;
-            long end = range.addr+range.length < cl_start+self->cl_size ?
+            long long cl_start = Cache__get_addr_from_cl_id(self, cl_id);
+            long long start = range.addr > cl_start ? range.addr : cl_start;
+            long long end = range.addr+range.length < cl_start+self->cl_size ?
                                 range.addr+range.length : cl_start+self->cl_size;
-            // PySys_WriteStdout("cl_start=%i start=%i end=%i\n", cl_start, start, end);
-            for(long i=start-cl_start; i<end-cl_start; i++) {
+            // PySys_WriteStdout("cl_start=%lli start=%lli end=%lli\n", cl_start, start, end);
+            for(long long i=start-cl_start; i<end-cl_start; i++) {
                 BITSET(self->subblock_bitfield,
                        set_id*self->ways*self->subblock_bits + location*self->subblock_bits + i);
             }
@@ -567,7 +567,7 @@ static PyObject* Cache_load(Cache* self, PyObject *args, PyObject *kwds)
     range.length = 1; // default to 1
 
     static char *kwlist[] = {"addr", "length", NULL};
-    PyArg_ParseTupleAndKeywords(args, kwds, "I|I", kwlist, &range.addr, &range.length);
+    PyArg_ParseTupleAndKeywords(args, kwds, "L|I", kwlist, &range.addr, &range.length);
 
     Cache__load(self, range); // TODO , 0);
     // Swap cl_id is irrelevant here, since this is only called on first level cache
@@ -582,7 +582,7 @@ static PyObject* Cache_iterload(Cache* self, PyObject *args, PyObject *kwds)
     range.length = 1; // default to 1
 
     static char *kwlist[] = {"addrs", "length", NULL};
-    PyArg_ParseTupleAndKeywords(args, kwds, "O|I", kwlist, &addrs, &range.length);
+    PyArg_ParseTupleAndKeywords(args, kwds, "O|L", kwlist, &addrs, &range.length);
     Py_INCREF(addrs);
 
     // Get and check iterator
@@ -617,7 +617,7 @@ static PyObject* Cache_store(Cache* self, PyObject *args, PyObject *kwds)
     range.length = 1; // default to 1
 
     static char *kwlist[] = {"addr", "length", NULL};
-    PyArg_ParseTupleAndKeywords(args, kwds, "I|I", kwlist, &range.addr, &range.length);
+    PyArg_ParseTupleAndKeywords(args, kwds, "L|L", kwlist, &range.addr, &range.length);
 
     // Handling ranges in c tremendously increases the speed for multiple elements
     Cache__store(self, range, 0);
@@ -632,7 +632,7 @@ static PyObject* Cache_iterstore(Cache* self, PyObject *args, PyObject *kwds)
     range.length = 1; // default to 1
 
     static char *kwlist[] = {"addrs", "length", NULL};
-    PyArg_ParseTupleAndKeywords(args, kwds, "O|I", kwlist, &addrs, &range.length);
+    PyArg_ParseTupleAndKeywords(args, kwds, "O|L", kwlist, &addrs, &range.length);
     Py_INCREF(addrs);
 
     // Get and check iterator
@@ -667,7 +667,7 @@ static PyObject* Cache_loadstore(Cache* self, PyObject *args, PyObject *kwds)
     range.length = 1; // default to 1
 
     static char *kwlist[] = {"addrs", "length", NULL};
-    PyArg_ParseTupleAndKeywords(args, kwds, "O|I", kwlist, &addrs, &range.length);
+    PyArg_ParseTupleAndKeywords(args, kwds, "O|L", kwlist, &addrs, &range.length);
     Py_INCREF(addrs);
 
     // Get and check iterator
@@ -763,10 +763,10 @@ static PyObject* Cache_loadstore(Cache* self, PyObject *args, PyObject *kwds)
 }
 
 static PyObject* Cache_contains(Cache* self, PyObject *args, PyObject *kwds) {
-    long addr;
+    long long addr;
 
     static char *kwlist[] = {"addr", NULL};
-    PyArg_ParseTupleAndKeywords(args, kwds, "I", kwlist, &addr);
+    PyArg_ParseTupleAndKeywords(args, kwds, "L", kwlist, &addr);
 
     long cl_id = Cache__get_cacheline_id(self, addr);
     long set_id = Cache__get_set_id(self, cl_id);

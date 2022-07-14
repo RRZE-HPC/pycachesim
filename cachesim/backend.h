@@ -19,8 +19,8 @@ typedef struct cache_entry {
 typedef struct addr_range {
     // Address range used to communicate consecutive accesses
     // last addr of range is addr+length-1
-    long addr;
-    long length;
+    long long addr;
+    long long length;
 } addr_range;
 
 struct stats {
