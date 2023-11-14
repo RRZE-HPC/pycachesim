@@ -106,12 +106,13 @@ class CacheSimulator(object):
         for c in self.levels(with_mem=False):
             c.reset_stats()
 
-    def force_write_back(self):
+    def force_write_back(self, level=None):
         """Write all pending dirty lines back."""
         # force_write_back() is acting recursive by it self, but multiple write-back first level
         # caches are imaginable. Better safe than sorry:
         for c in self.levels(with_mem=False):
-            c.force_write_back()
+            if level in c.name:
+                return c.force_write_back()
 
     def load(self, addr, length=1):
         """
@@ -192,15 +193,25 @@ class CacheSimulator(object):
         if with_mem:
             yield self.main_memory
 
-    def count_invalid_entries(self):
+    def count_invalid_entries(self, level):
         """Sum of all invalid entry counts from cache levels."""
-        return sum([c.count_invalid_entries() for c in self.levels(with_mem=False)])
+        for c in self.levels(with_mem=False):
+            if level in c.name:
+                return c.count_invalid_entries()
+        # return sum([c.count_invalid_entries() for c in self.levels(with_mem=False)])
 
-    def mark_all_invalid(self):
+    def mark_all_invalid(self, level):
         """Mark all entries invalid and reset stats."""
         for c in self.levels(with_mem=False):
-            c.mark_all_invalid()
+            if level in c.name:
+                c.mark_all_invalid()
         self.reset_stats()
+
+    def dirty_cl_ids(self, level):
+        for c in self.levels(with_mem=False):
+            if level in c.name:
+                return c.dirty_lines()
+            
 
     # def draw_array(self, start, width, height, block=1):
     #     """Return image representation of cache states."""
@@ -243,7 +254,7 @@ def get_backend(cache):
 class Cache(object):
     """Cache level object."""
 
-    replacement_policy_enum = {"FIFO": 0, "LRU": 1, "MRU": 2, "RR": 3}
+    replacement_policy_enum = {"FIFO": 0, "LRU": 1, "MRU": 2, "RR": 3, "LFSR": 4}
 
     def __init__(self, name, sets, ways, cl_size,
                  replacement_policy="LRU",
@@ -258,7 +269,7 @@ class Cache(object):
         :param sets: total number of sets, if 1 cache will be full-associative
         :param ways: total number of ways, if 1 cache will be direct mapped
         :param cl_size: number of bytes that can be addressed individually
-        :param replacement_policy: FIFO, LRU (default), MRU or RR
+        :param replacement_policy: FIFO, LRU (default), MRU or RR or LFSR
         :param write_back: if true (default), write back will be done on evict.
                            Otherwise write-through is used
         :param write_allocate: if true (default), a load will be issued on a
