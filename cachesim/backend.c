@@ -870,7 +870,7 @@ static PyMethodDef Cache_methods[] = {
     {"store", (PyCFunction)Cache_store, METH_VARARGS|METH_KEYWORDS, NULL},
     {"iterstore", (PyCFunction)Cache_iterstore, METH_VARARGS|METH_KEYWORDS, NULL},
     {"loadstore", (PyCFunction)Cache_loadstore, METH_VARARGS|METH_KEYWORDS, NULL},
-    {"contains", (PyCFunction)Cache_contains, METH_VARARGS, NULL},
+    {"contains", (PyCFunction)Cache_contains, METH_VARARGS|METH_KEYWORDS, NULL},
     {"force_write_back", (PyCFunction)Cache_force_write_back, METH_VARARGS, NULL},
     {"reset_stats", (PyCFunction)Cache_reset_stats, METH_VARARGS, NULL},
     {"count_invalid_entries", (PyCFunction)Cache_count_invalid_entries, METH_VARARGS, NULL},
