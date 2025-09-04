@@ -1179,7 +1179,7 @@ Cache* get_cacheSim_from_file(const char* cache_file)
         if (line[0] != '\n' && line[0] != '\r' && line[0] != '#')
         {
             cacheSim[counter] = (Cache*) calloc(1, sizeof(Cache));
-            if (&cacheSim[counter] == NULL)
+            if (cacheSim[counter] == NULL)
             {
                 fprintf(file, "allocation of memory for cache object failed\n");
                 fflush(file);
@@ -1358,6 +1358,9 @@ Cache* get_cacheSim_from_file(const char* cache_file)
 
     }
 
+#ifndef NO_PYTHON
+#define CAST_CACHE_SIM_TO_PYOBJ (PyObject*)
+#endif
     //link caches
     fputs("\nlink caches:\n",file);
     fflush(file);
@@ -1370,17 +1373,17 @@ Cache* get_cacheSim_from_file(const char* cache_file)
             if(cacheSim[j]->name != NULL){
                 if (load_from_buff[i] != NULL && strcmp(load_from_buff[i], cacheSim[j]->name) == 0)
                 {
-                    cacheSim[i]->load_from = cacheSim[j];
+                    cacheSim[i]->load_from = CAST_CACHE_SIM_TO_PYOBJ cacheSim[j];
                     ++linkcounter[j];
                 }
                 if (store_to_buff[i] != NULL && strcmp(store_to_buff[i], cacheSim[j]->name) == 0)
                 {
-                    cacheSim[i]->store_to = cacheSim[j];
+                    cacheSim[i]->store_to = CAST_CACHE_SIM_TO_PYOBJ cacheSim[j];
                     ++linkcounter[j];
                 }
                 if (victims_to_buff[i] != NULL && strcmp(victims_to_buff[i], cacheSim[j]->name) == 0)
                 {
-                    cacheSim[i]->victims_to = cacheSim[j];
+                    cacheSim[i]->victims_to = CAST_CACHE_SIM_TO_PYOBJ cacheSim[j];
                     ++linkcounter[j];
                 }
             }
@@ -1434,6 +1437,9 @@ Cache* get_cacheSim_from_file(const char* cache_file)
 
 //has to be left out when using pin, as stdout for some reason cannot be linked in this case
 #ifndef USE_PIN
+#ifndef NO_PYTHON
+#define CAST_PYOBJ_TO_CACHE (Cache*)
+#endif
 void printStats(Cache* cache)
 {
     fprintf(stdout, "%s:\n",cache->name);
@@ -1444,10 +1450,10 @@ void printStats(Cache* cache)
     fprintf(stdout, "EVICT: %llu   size: %lluB\n",cache->EVICT.count, cache->EVICT.byte);
 
     if (cache->load_from != NULL)
-        printStats(cache->load_from);
+        printStats(CAST_PYOBJ_TO_CACHE cache->load_from);
     if (cache->store_to != NULL && cache->store_to != cache->load_from)
-        printStats(cache->store_to);
+        printStats(CAST_PYOBJ_TO_CACHE cache->store_to);
     if (cache->victims_to != NULL && cache->store_to != cache->load_from && cache->store_to != cache->victims_to)
-        printStats(cache->victims_to);
+        printStats(CAST_PYOBJ_TO_CACHE cache->victims_to);
 }
 #endif

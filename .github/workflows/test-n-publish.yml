@@ -7,7 +7,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.5", "3.6", "3.7", "3.8", "3.9", "3.10"]
+        python-major-version: [3]
+        python-minor-version: [8, 9, 10, 11, 12, 13]
+    env:
+      python-version: ${{ format('{0}.{1}', matrix.python-major-version, matrix.python-minor-version) }}
+
     
     steps:
     - uses: actions/checkout@v2
@@ -15,10 +19,18 @@ jobs:
       name: Set up Python ${{ matrix.python-version }}
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install
+    - name: Install Pip
       run: |
         python -m pip install --upgrade pip
+    - name: Install Python dependencies
+      run: |
         python -m pip install codecov requests
+    - name: Install Python setuptools
+      if: ${{ (matrix.python-major-version == 3 && matrix.python-minor-version >= 12) || matrix.python-major-version > 3 }}
+      run: |
+        python -m pip install setuptools
+    - name: Install PyCacheSim
+      run: |
         python -m pip install -e .
     - name: Test
       run: |
